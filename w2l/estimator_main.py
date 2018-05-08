@@ -1,10 +1,8 @@
-import numpy as np
 import tensorflow as tf
 
 from .utils.data import (read_data_config, extract_transcriptions,
                          checkpoint_iterator)
 from .utils.errors import letter_error_rate_corpus, word_error_rate_corpus
-from .utils.viterbi import decode, drop_reps
 from .utils.vocab import parse_vocab
 from .estimator_inputs import (w2l_input_fn_npy, w2l_input_fn_from_container,
                                redo_repetitions)

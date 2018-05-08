@@ -1,7 +1,6 @@
 import numpy as np
 import tensorflow as tf
 
-from .utils.asg.tf import asg_loss_batched
 from .utils.hooks import SummarySaverHookWithProfile
 from .utils.model import (conv_layer, decode, decode_top, dense_to_sparse,
                           lr_annealer, clip_and_step, residual_block,
