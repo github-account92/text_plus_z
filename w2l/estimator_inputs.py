@@ -76,8 +76,7 @@ def w2l_input_fn_npy(csv_path, array_base_path, which_sets, train, vocab,
             yield file_name.encode("utf-8"), transcr.encode("utf-8")
 
     with tf.variable_scope("input"):
-        data = tf.data.Dataset.from_generator(
-            gen, (tf.string, tf.string, tf.string))
+        data = tf.data.Dataset.from_generator(gen, (tf.string, tf.string))
 
         if train:
             # this basically shuffles the full dataset
