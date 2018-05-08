@@ -1,0 +1,13 @@
+# config for the "old" data preprocessed by Julius
+# NOTE to preprocess the data exactly like Julius, you would need to set
+# center=True in librosa.stft, which is currently False by default
+# NOTE also that this data is already normalized to per-example mean 0, std 1
+# This means you should *not* use thresholding with this data!
+# NOTE also that csv_path corpus_new is *not* a typo.
+csv_path,/data/corpus_new.csv
+array_dir,/data/cache/English_old
+vocab_path,/data/vocab_fair
+n_freqs,128
+window_size,512
+hop_length,128
+normalize,True

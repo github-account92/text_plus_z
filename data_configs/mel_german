@@ -1,0 +1,11 @@
+# config for German data
+# NOTE that this data is *not* normalized and is on a dB scale. You will
+# probably want to normalize it or at least scale it down when using it as
+# input
+csv_path,/data/corpora/German/corpus-without-positional.csv
+array_dir,/data/cache/German
+vocab_path,/data/vocab_german
+n_freqs,128
+window_size,400
+hop_length,160
+normalize,False
