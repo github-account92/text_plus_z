@@ -67,7 +67,7 @@ def w2l_model_fn(features, labels, mode, params, config):
         audio = tf.transpose(audio, [0, 2, 1])
 
     with tf.variable_scope("model"):
-        pre_out, total_stride, all_layers = read_apply_model_config(
+        pre_out, total_stride, encoder_layers = read_apply_model_config(
             model_config, audio, act=act, batchnorm=use_bn,
             train=mode == tf.estimator.ModeKeys.TRAIN, data_format=data_format,
             vis=vis, reg=reg_type)
@@ -76,7 +76,7 @@ def w2l_model_fn(features, labels, mode, params, config):
             pre_out, vocab_size + 1, 1, 1, 1,
             act=None, batchnorm=False, train=False,
             data_format=data_format, vis=vis, reg=False, name="logits")
-        reconstructed = read_apply_model_config_inverted(
+        reconstructed, decoder_layers = read_apply_model_config_inverted(
             model_config, pre_out, act=act, batchnorm=use_bn,
             train=mode == tf.estimator.ModeKeys.TRAIN, data_format=data_format,
             vis=vis, reg=reg_type)
@@ -106,7 +106,7 @@ def w2l_model_fn(features, labels, mode, params, config):
                            "input": audio,
                            "input_length": seq_lengths_original,
                            "reconstruction": reconstructed}
-            for name, act in all_layers:
+            for name, act in encoder_layers:
                 predictions[name] = act
             decoded = decode(logits_tm, seq_lengths, top_paths=100,
                              pad_val=-1)
@@ -295,6 +295,9 @@ def read_apply_model_config_inverted(config_path, inputs, act, batchnorm,
     """As above, but applies the config in reverse order with transposed
      convolutions.
 
+     Note: The last layer of the encoder is not applied in transposed fashion.
+           An additional layer is added to get back to the input dimensionality
+
      Parameters:
         config_path: Path to the model config file.
         inputs: 3D inputs to the model (pre-logits layer of "encoder").
@@ -320,8 +323,15 @@ def read_apply_model_config_inverted(config_path, inputs, act, batchnorm,
     with open(config_path) as model_config:
         total_stride = 1
         previous = inputs
-        for ind, line in enumerate(reversed(model_config.readlines())):
+        # TODO make this less shitty
+        config_strings = model_config.readlines()
+
+        for ind, line in enumerate(reversed(config_strings)):
             t, n_f, w_f, s_f, d_f = parse_model_config_line(line)
+            try:
+                n_f = parse_model_config_line(config_strings[ind+1])
+            except:
+                n_f = 128
             name = "decoder_" + t + str(ind)
             if t == "layer":
                 previous, pars = transposed_conv_layer(
