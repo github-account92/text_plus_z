@@ -50,6 +50,70 @@ def conv_layer(inputs, n_filters, width_filters, stride_filters, dilation, act,
                 diff_norm=reg, weight_norm="l2", grid_dims=GRIDS[n_filters],
                 neighbor_size=3) if reg else None,
             name="conv")
+
+        if batchnorm:
+            conv = tf.layers.batch_normalization(
+                conv, axis=channel_axis, training=train, name="batch_norm")
+            if act:
+                conv = act(conv)
+        if vis:
+            tf.summary.histogram("activations_" + name,
+                                 conv)
+        return conv, n_pars
+
+
+def transposed_conv_layer(inputs, n_filters, width_filters, stride_filters,
+                          dilation, act, batchnorm, train, data_format, vis,
+                          reg, name):
+    """Build and apply a 1D transposed convolutional layer.
+
+    Parameters:
+        inputs: 3D inputs to the layer.
+        n_filters: Number of filters for the layer.
+        width_filters: Filter width for the layer.
+        stride_filters: Stride for the layer.
+        dilation: Ignored.
+        act: Activation function to apply after convolution (or optionally
+             batch normalization).
+        batchnorm: Bool, whether to use batch normalization.
+        train: Bool or TF placeholder. Fed straight into batch normalization
+               (ignored if that is not used).
+        data_format: channels_first or _last. Assumed that you checked validity
+                     beforehand. I.e. if it's not first, this function simply
+                     assumes that it's last.
+        vis: Bool, whether to add a histogram for layer activations.
+        reg: Regularizer type to use, or None for no regularizer.
+        name: Name of the layer (used for variable scope and summary).
+
+    Returns:
+        Output of the layer and number of parameters.
+    """
+    channel_axis = 1 if data_format == "channels_first" else -1
+    n_pars = int(inputs.shape[channel_axis]) * n_filters * width_filters
+    if batchnorm:  # add per-filter beta and gamma
+        n_pars += 2 * n_filters
+    print("\tCreating layer {} with {} parameters...".format(name, n_pars))
+
+    with tf.variable_scope(name):
+        # for some godforsaken reason there is no 1d transposed conv layer??
+        # b x c x t -> b x c x t x 1
+        # b x t x c -> b x t x 1 x c
+        inp_2d = tf.expand_dims(
+            inputs, axis=3 if data_format == "channels_first" else 2)
+        conv = tf.layers.conv2d_transpose(
+            inp_2d, filters=n_filters, kernel_size=(width_filters, 1),
+            strides=stride_filters, activation=None if batchnorm else act,
+            use_bias=not batchnorm, padding="same", data_format=data_format,
+            kernel_regularizer=sebastians_magic_trick(
+                diff_norm=reg, weight_norm="l2", grid_dims=GRIDS[n_filters],
+                neighbor_size=3) if reg else None,
+            name="conv")
+        if data_format == "channels_first":
+            shape = [-1, n_filters, tf.shape(inputs)[-1]]
+        else:
+            shape = [-1, tf.shape(inputs)[1], n_filters]
+        conv = tf.reshape(conv, shape)
+
         if batchnorm:
             conv = tf.layers.batch_normalization(
                 conv, axis=channel_axis, training=train, name="batch_norm")

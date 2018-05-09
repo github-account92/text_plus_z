@@ -4,7 +4,7 @@ import tensorflow as tf
 from .utils.hooks import SummarySaverHookWithProfile
 from .utils.model import (conv_layer, decode, decode_top, dense_to_sparse,
                           lr_annealer, clip_and_step, residual_block,
-                          dense_block)
+                          dense_block, transposed_conv_layer)
 
 
 def w2l_model_fn(features, labels, mode, params, config):
@@ -76,6 +76,10 @@ def w2l_model_fn(features, labels, mode, params, config):
             pre_out, vocab_size + 1, 1, 1, 1,
             act=None, batchnorm=False, train=False,
             data_format=data_format, vis=vis, reg=False, name="logits")
+        reconstructed = read_apply_model_config_inverted(
+            model_config, pre_out, act=act, batchnorm=use_bn,
+            train=mode == tf.estimator.ModeKeys.TRAIN, data_format=data_format,
+            vis=vis, reg=reg_type)
 
     # after this we need logits in shape time x batch_size x vocab_size
     if data_format == "channels_first":  # bs x v x t -> t x bs x v
@@ -100,7 +104,8 @@ def w2l_model_fn(features, labels, mode, params, config):
                                dim=1 if data_format == "channels_first" else -1,
                                name="softmax_probabilities"),
                            "input": audio,
-                           "input_length": seq_lengths_original}
+                           "input_length": seq_lengths_original,
+                           "reconstruction": reconstructed}
             for name, act in all_layers:
                 predictions[name] = act
             decoded = decode(logits_tm, seq_lengths, top_paths=100,
@@ -110,6 +115,7 @@ def w2l_model_fn(features, labels, mode, params, config):
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
     with tf.name_scope("loss"):
+        """
         total_loss = 0
         # ctc wants the labels as a sparse tensor
         # note that labels are NOT time-major, but this is intended
@@ -121,6 +127,15 @@ def w2l_model_fn(features, labels, mode, params, config):
                                       name="avg_loss")
         tf.summary.scalar("ctc_loss", ctc_loss)
         total_loss += ctc_loss
+        """
+        with tf.name_scope("reconstruction_loss"):
+            mask = tf.sequence_mask(seq_lengths_original, dtype=tf.float32)
+            if data_format == "channels_first":
+                mask = mask[:, tf.newaxis, :]
+            else:
+                mask = mask[:, :, tf.newaxis]
+            reconstr_loss = tf.squared_difference(audio, reconstructed) * mask
+        total_loss = reconstr_loss
 
         if reg_coeff:
             reg_losses = tf.losses.get_regularization_losses()
@@ -192,16 +207,17 @@ def w2l_model_fn(features, labels, mode, params, config):
     with tf.name_scope("evaluation"):
         decoded = decode_top(logits_tm, seq_lengths, pad_val=-1,
                              as_sparse=True)
-        ed_dist = tf.reduce_mean(tf.edit_distance(decoded, labels_sparse),
-                                 name="edit_distance_batch_mean")
-        eval_metric_ops = {"edit_distance": tf.metrics.mean(
-            ed_dist, name="edit_distance_total_mean")}
+        #ed_dist = tf.reduce_mean(tf.edit_distance(decoded, labels_sparse),
+        #                         name="edit_distance_batch_mean")
+        eval_metric_ops = {}
+        #eval_metric_ops = {"edit_distance": tf.metrics.mean(
+        #    ed_dist, name="edit_distance_total_mean")}
     return tf.estimator.EstimatorSpec(mode=mode, loss=total_loss,
                                       eval_metric_ops=eval_metric_ops)
 
 
 ###############################################################################
-# Helper function for building inference models.
+# Helper functions for building inference models.
 ###############################################################################
 def read_apply_model_config(config_path, inputs, act, batchnorm, train,
                             data_format, vis, reg):
@@ -224,7 +240,7 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
 
     Parameters:
         config_path: Path to the model config file.
-        inputs: 3D inputs to the model.
+        inputs: 3D inputs to the model (audio).
         act: Activation function to apply in each layer/block.
         batchnorm: Bool, whether to use batch normalization.
         train: Bool or TF placeholder. Fed straight into batch normalization
@@ -240,21 +256,15 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
         of all layer/block activations with their names (tuples name, act).
     """
     # TODO for resnets/dense nets, return all *layers*, not just blocks
-
-    def parse_line(l):
-        entries = l.strip().split(",")
-        return (entries[0], int(entries[1]), int(entries[2]), int(entries[3]),
-                int(entries[4]))
-
-    print("Reading, building and applying model...")
+    print("Reading, building and applying encoder...")
     total_pars = 0
     all_layers = []
     with open(config_path) as model_config:
         total_stride = 1
         previous = inputs
         for ind, line in enumerate(model_config):
-            t, n_f, w_f, s_f, d_f = parse_line(line)
-            name = t + str(ind)
+            t, n_f, w_f, s_f, d_f = parse_model_config_line(line)
+            name = "encoder_" + t + str(ind)
             if t == "layer":
                 previous, pars = conv_layer(
                     previous, n_f, w_f, s_f, d_f, act, batchnorm, train,
@@ -276,5 +286,69 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
             all_layers.append((name, previous))
             total_stride *= s_f
             total_pars += pars
-    print("Number of model parameters: {}".format(total_pars))
+    print("Number of model parameters (encoder): {}".format(total_pars))
     return previous, total_stride, all_layers
+
+
+def read_apply_model_config_inverted(config_path, inputs, act, batchnorm,
+                                     train, data_format, vis, reg):
+    """As above, but applies the config in reverse order with transposed
+     convolutions.
+
+     Parameters:
+        config_path: Path to the model config file.
+        inputs: 3D inputs to the model (pre-logits layer of "encoder").
+        act: Activation function to apply in each layer/block.
+        batchnorm: Bool, whether to use batch normalization.
+        train: Bool or TF placeholder. Fed straight into batch normalization
+               (ignored if that is not used).
+        data_format: channels_first or _last. Assumed that you checked validity
+                     beforehand. I.e. if it's not first, this function simply
+                     assumes that it's last.
+        vis: Bool, whether to add histograms for layer activations.
+        reg: Either None or string giving regularizer type.
+
+    Returns:
+        Output of the last layer/block and a list of all layer/block
+        activations with their names (tuples name, act).
+
+    """
+    # TODO refactor with the above function
+    print("Reading, building and applying decoder...")
+    total_pars = 0
+    all_layers = []
+    with open(config_path) as model_config:
+        total_stride = 1
+        previous = inputs
+        for ind, line in enumerate(reversed(model_config.readlines())):
+            t, n_f, w_f, s_f, d_f = parse_model_config_line(line)
+            name = "decoder_" + t + str(ind)
+            if t == "layer":
+                previous, pars = transposed_conv_layer(
+                    previous, n_f, w_f, s_f, d_f, act, batchnorm, train,
+                    data_format, vis, reg=reg, name=name)
+            # TODO residual/dense blocks ignore some parameters ATM!
+            elif t == "block":
+                previous, pars = residual_block(
+                    previous, n_f, w_f, s_f, act, batchnorm, train,
+                    data_format, vis, name=name)
+            elif t == "dense":
+                previous, pars = dense_block(
+                    previous, n_f, w_f, s_f, act, batchnorm, train,
+                    data_format, vis, name=name)
+            else:
+                raise ValueError(
+                    "Invalid layer type specified in layer {}! Valid are "
+                    "'layer', 'block', 'dense'. You specified "
+                    "{}.".format(ind, t))
+            all_layers.append((name, previous))
+            total_stride *= s_f
+            total_pars += pars
+    print("Number of model parameters (decoder): {}".format(total_pars))
+    return previous, all_layers
+
+
+def parse_model_config_line(l):
+    entries = l.strip().split(",")
+    return (entries[0], int(entries[1]), int(entries[2]), int(entries[3]),
+            int(entries[4]))
