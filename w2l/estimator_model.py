@@ -135,7 +135,7 @@ def w2l_model_fn(features, labels, mode, params, config):
             else:
                 mask = mask[:, :, tf.newaxis]
             reconstr_loss = tf.squared_difference(audio, reconstructed) * mask
-        total_loss = reconstr_loss
+        total_loss = tf.reduce_mean(reconstr_loss)
 
         if reg_coeff:
             reg_losses = tf.losses.get_regularization_losses()
@@ -185,7 +185,7 @@ def w2l_model_fn(features, labels, mode, params, config):
         if vis:
             with tf.name_scope("visualization"):
                 for g, v in grads_and_vars:
-                    if v.name.find("kernel") >= 0:
+                    if v.name.find("kernel") >= 0 and g is not None:
                         tf.summary.scalar(v.name + "gradient_norm", tf.norm(g))
                 tf.summary.scalar("global_gradient_norm", glob_grad_norm)
 
@@ -329,7 +329,7 @@ def read_apply_model_config_inverted(config_path, inputs, act, batchnorm,
         for ind, line in enumerate(reversed(config_strings)):
             t, n_f, w_f, s_f, d_f = parse_model_config_line(line)
             try:
-                n_f = parse_model_config_line(config_strings[ind+1])
+                n_f = int(parse_model_config_line(config_strings[ind+1])[1])
             except:
                 n_f = 128
             name = "decoder_" + t + str(ind)

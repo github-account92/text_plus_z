@@ -139,9 +139,13 @@ def _pyfunc_load_arrays_map_transcriptions(file_name, trans, vocab, threshold,
         1D array (label_len)
     """
     array = np.load(file_name.decode("utf-8"))
+    # we make sure arrays are even in the time axis because of reasons...
+    if array.shape[-1] % 2:
+        array = np.pad(array, pad_width=((0, 0), (0, 1)), mode="constant")
+    length = np.int32(array.shape[-1])
+
     trans_mapped = np.array([vocab[ch] for ch in trans.decode("utf-8")],
                             dtype=np.int32)
-    length = np.int32(array.shape[-1])
     trans_length = np.int32(len(trans_mapped))
 
     if threshold:

@@ -102,17 +102,16 @@ def transposed_conv_layer(inputs, n_filters, width_filters, stride_filters,
             inputs, axis=3 if data_format == "channels_first" else 2)
         conv = tf.layers.conv2d_transpose(
             inp_2d, filters=n_filters, kernel_size=(width_filters, 1),
-            strides=stride_filters, activation=None if batchnorm else act,
+            strides=(stride_filters, 1), activation=None if batchnorm else act,
             use_bias=not batchnorm, padding="same", data_format=data_format,
             kernel_regularizer=sebastians_magic_trick(
                 diff_norm=reg, weight_norm="l2", grid_dims=GRIDS[n_filters],
                 neighbor_size=3) if reg else None,
             name="conv")
         if data_format == "channels_first":
-            shape = [-1, n_filters, tf.shape(inputs)[-1]]
+            conv = tf.squeeze(conv, axis=3)
         else:
-            shape = [-1, tf.shape(inputs)[1], n_filters]
-        conv = tf.reshape(conv, shape)
+            conv = tf.squeeze(conv, axis=2)
 
         if batchnorm:
             conv = tf.layers.batch_normalization(
