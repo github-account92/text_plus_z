@@ -333,6 +333,9 @@ def read_apply_model_config_inverted(config_path, inputs, act, batchnorm,
             except:
                 n_f = 128
             name = "decoder_" + t + str(ind)
+            if ind == len(config_strings) - 1:
+                act = None  # lol
+                batchnorm = False  # double lol
             if t == "layer":
                 previous, pars = transposed_conv_layer(
                     previous, n_f, w_f, s_f, d_f, act, batchnorm, train,
