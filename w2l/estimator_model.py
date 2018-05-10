@@ -62,7 +62,8 @@ def w2l_model_fn(features, labels, mode, params, config):
 
     # construct model input -> output
     audio, seq_lengths = features["audio"], features["length"]
-    labels = labels["transcription"]
+    if labels is not None:  # predict passes labels=None...
+        labels = labels["transcription"]
     if data_format == "channels_last":
         audio = tf.transpose(audio, [0, 2, 1])
 
@@ -108,9 +109,9 @@ def w2l_model_fn(features, labels, mode, params, config):
                            "reconstruction": reconstructed}
             for name, act in encoder_layers:
                 predictions[name] = act
-            decoded = decode(logits_tm, seq_lengths, top_paths=100,
-                             pad_val=-1)
-            predictions["decoding"] = decoded
+            #decoded = decode(logits_tm, seq_lengths, top_paths=100,
+            #                 pad_val=-1)
+            #predictions["decoding"] = decoded
 
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 

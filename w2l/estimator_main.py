@@ -124,13 +124,13 @@ def run_asr(mode, data_config, model_config, model_dir,
                     predictions_repacked["true"] = true
                 predictions_repacked["input_length"] = prediction["input_length"]
 
-                pred = prediction["decoding"]
+                #pred = prediction["decoding"]
                 # remove padding and convert to chars
-                pred = [[p for p in candidate if p != -1] for candidate in pred]
-                pred_ch = ["".join([ind_to_ch[ind] for ind in candidate])
-                           for candidate in pred]
-                pred_ch = [redo_repetitions(candidate) for candidate in pred_ch]
-                predictions_repacked["decoding"] = pred_ch
+                #pred = [[p for p in candidate if p != -1] for candidate in pred]
+                #pred_ch = ["".join([ind_to_ch[ind] for ind in candidate])
+                #           for candidate in pred]
+                #pred_ch = [redo_repetitions(candidate) for candidate in pred_ch]
+                #predictions_repacked["decoding"] = pred_ch
 
                 # construct a sorted list of layers and their activations, with
                 # input and front and output (logits) in the back
@@ -141,6 +141,7 @@ def run_asr(mode, data_config, model_config, model_dir,
                 layers.insert(0, ("input", prediction["input"]))
 
                 predictions_repacked["all_layers"] = layers
+                predictions_repacked["reconstruction"] = prediction["reconstruction"]
                 yield predictions_repacked
 
     if mode == "predict" or mode == "container":
