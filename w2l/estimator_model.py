@@ -4,7 +4,7 @@ import tensorflow as tf
 from .utils.hooks import SummarySaverHookWithProfile
 from .utils.model import (conv_layer, decode, decode_top, dense_to_sparse,
                           lr_annealer, clip_and_step, residual_block,
-                          dense_block, transposed_conv_layer)
+                          dense_block, transposed_conv_layer, compute_mmd)
 
 
 def w2l_model_fn(features, labels, mode, params, config):
@@ -41,6 +41,7 @@ def w2l_model_fn(features, labels, mode, params, config):
                       instead of Adam.
             fix_lr: Bool, if set use the provided learning rate instead of
                     the automatically annealed one.
+            mmd: Use MMD loss for latent space (Wasserstein VAE thingy).
         config: RunConfig object passed through from Estimator.
         
     Returns:
@@ -59,6 +60,7 @@ def w2l_model_fn(features, labels, mode, params, config):
     reg_coeff = params["reg"][1]
     momentum = params["momentum"]
     fix_lr = params["fix_lr"]
+    mmd = params["mmd"]
 
     # construct model input -> output
     audio, seq_lengths = features["audio"], features["length"]
@@ -135,8 +137,19 @@ def w2l_model_fn(features, labels, mode, params, config):
                 mask = mask[:, tf.newaxis, :]
             else:
                 mask = mask[:, :, tf.newaxis]
-            reconstr_loss = tf.squared_difference(audio, reconstructed) * mask
-        total_loss = tf.reduce_mean(reconstr_loss)
+            reconstr_loss = tf.reduce_mean(
+                tf.squared_difference(audio, reconstructed) * mask)
+        tf.summary.scalar("reconstruction_loss", reconstr_loss)
+        total_loss = reconstr_loss
+
+        if mmd:
+            # TODO random encoder
+            with tf.name_scope("mmd"):
+                latent = tf.layers.flatten(pre_out)
+                target_samples = tf.random_normal(tf.shape(latent))
+                mmd_loss = compute_mmd(target_samples, pre_out)
+            total_loss += mmd_loss
+            tf.summary.scalar("mmd_loss", mmd_loss)
 
         if reg_coeff:
             reg_losses = tf.losses.get_regularization_losses()

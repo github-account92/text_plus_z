@@ -33,6 +33,9 @@ parser.add_argument("-f", "--data_format",
                     help="Data format. Either 'channels_first' "
                          "(default, recommended for GPU) "
                          "or 'channels_last', recommended for CPU.")
+parser.add_argument("-m", "--mmd",
+                    action="store_true",
+                    help="Use MMD loss for latent space (Wasserstein VAE).")
 parser.add_argument("-r", "--reg",
                     nargs=2,
                     default=[None, "0.0"],
@@ -133,7 +136,7 @@ else:
 out = run_asr(mode=args.mode, data_config=args.data_config,
               model_config=args.model_config, model_dir=args.model_dir,
               act=args.act, batchnorm=not args.batchnorm_off,
-              data_format=args.data_format, reg=args.reg,
+              data_format=args.data_format, mmd=args.mmd, reg=args.reg,
               adam_params=args.adam_params, batch_size=args.batch_size,
               clipping=args.clipping, fix_lr=args.fix_lr,
               momentum=args.momentum, normalize=not args.normalize_off,

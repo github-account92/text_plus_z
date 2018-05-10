@@ -11,7 +11,7 @@ from .estimator_model import w2l_model_fn
 
 def run_asr(mode, data_config, model_config, model_dir,
             act="relu", batchnorm=True, data_format="channels_first",
-            reg=(None, 0.),
+            mmd=False, reg=(None, 0.),
             adam_params=(1e-4, 0.9, 0.9, 1e-8), batch_size=16, clipping=500,
             fix_lr=False, momentum=False, normalize=True, steps=500000,
             threshold=0., vis=100, which_sets=None, container=None):
@@ -70,7 +70,8 @@ def run_asr(mode, data_config, model_config, model_dir,
               "vis": vis,
               "reg": reg,
               "momentum": momentum,
-              "fix_lr": fix_lr}
+              "fix_lr": fix_lr,
+              "mmd": mmd}
     # we set infrequent "permanent" checkpoints
     # we also disable the default SummarySaverHook IF profiling is requested
     config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=1,
