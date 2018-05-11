@@ -143,14 +143,14 @@ def w2l_model_fn(features, labels, mode, params, config):
         tf.summary.scalar("reconstruction_loss", reconstr_loss)
         total_loss = reconstr_loss
 
+        # TODO random encoder
+        with tf.name_scope("mmd"):
+            latent = tf.layers.flatten(pre_out)[::10]
+            target_samples = tf.random_normal(tf.shape(latent))
+            mmd_loss = compute_mmd(target_samples, latent)
         if mmd:
-            # TODO random encoder
-            with tf.name_scope("mmd"):
-                latent = tf.layers.flatten(pre_out)[::10]
-                target_samples = tf.random_normal(tf.shape(latent))
-                mmd_loss = compute_mmd(target_samples, latent)
             total_loss += mmd*mmd_loss
-            tf.summary.scalar("mmd_loss", mmd_loss)
+        tf.summary.scalar("mmd_loss", mmd_loss)
 
         if reg_coeff:
             reg_losses = tf.losses.get_regularization_losses()
@@ -224,7 +224,9 @@ def w2l_model_fn(features, labels, mode, params, config):
                              as_sparse=True)
         #ed_dist = tf.reduce_mean(tf.edit_distance(decoded, labels_sparse),
         #                         name="edit_distance_batch_mean")
-        eval_metric_ops = {}
+        eval_metric_ops = {
+            "reconstruction_loss": tf.metrics.mean(reconstr_loss),
+            "mmd_loss": tf.metrics.mean(mmd_loss)}
         #eval_metric_ops = {"edit_distance": tf.metrics.mean(
         #    ed_dist, name="edit_distance_total_mean")}
     return tf.estimator.EstimatorSpec(mode=mode, loss=total_loss,
@@ -278,7 +280,7 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
         total_stride = 1
         previous = inputs
         config_strings = model_config.readlines()
-        
+
         for ind, line in enumerate(config_strings):
             t, n_f, w_f, s_f, d_f = parse_model_config_line(line)
             name = "encoder_" + t + str(ind)
