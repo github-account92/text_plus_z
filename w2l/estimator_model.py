@@ -41,7 +41,8 @@ def w2l_model_fn(features, labels, mode, params, config):
                       instead of Adam.
             fix_lr: Bool, if set use the provided learning rate instead of
                     the automatically annealed one.
-            mmd: Use MMD loss for latent space (Wasserstein VAE thingy).
+            mmd: Coefficient for MMD loss for latent space (Wasserstein VAE
+                 thingy).
         config: RunConfig object passed through from Estimator.
         
     Returns:
@@ -145,10 +146,10 @@ def w2l_model_fn(features, labels, mode, params, config):
         if mmd:
             # TODO random encoder
             with tf.name_scope("mmd"):
-                latent = tf.layers.flatten(pre_out)
+                latent = tf.layers.flatten(pre_out)[::10]
                 target_samples = tf.random_normal(tf.shape(latent))
-                mmd_loss = compute_mmd(target_samples, pre_out)
-            total_loss += mmd_loss
+                mmd_loss = compute_mmd(target_samples, latent)
+            total_loss += mmd*mmd_loss
             tf.summary.scalar("mmd_loss", mmd_loss)
 
         if reg_coeff:
@@ -276,9 +277,14 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
     with open(config_path) as model_config:
         total_stride = 1
         previous = inputs
-        for ind, line in enumerate(model_config):
+        config_strings = model_config.readlines()
+        
+        for ind, line in enumerate(config_strings):
             t, n_f, w_f, s_f, d_f = parse_model_config_line(line)
             name = "encoder_" + t + str(ind)
+            if ind == len(config_strings) - 1:
+                act = None  # lol
+                batchnorm = False  # double lol
             if t == "layer":
                 previous, pars = conv_layer(
                     previous, n_f, w_f, s_f, d_f, act, batchnorm, train,

@@ -34,8 +34,10 @@ parser.add_argument("-f", "--data_format",
                          "(default, recommended for GPU) "
                          "or 'channels_last', recommended for CPU.")
 parser.add_argument("-m", "--mmd",
-                    action="store_true",
-                    help="Use MMD loss for latent space (Wasserstein VAE).")
+                    type=float,
+                    default=0.,
+                    help="Coefficient for MMD loss for latent space "
+                         "(Wasserstein VAE). 0 (default) deactivates it.")
 parser.add_argument("-r", "--reg",
                     nargs=2,
                     default=[None, "0.0"],
