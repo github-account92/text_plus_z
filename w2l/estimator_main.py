@@ -136,7 +136,7 @@ def run_asr(mode, data_config, model_config, model_dir,
                 # construct a sorted list of layers and their activations, with
                 # input and front and output (logits) in the back
                 layers = [(n, a) for (n, a) in prediction.items() if
-                          leading_string(n) in ["layer", "block", "dense"]]
+                          leading_string(n) in ["encoder_layer", "decoder_layer", "block", "dense"]]
                 layers.sort(key=lambda tup: trailing_num(tup[0]))
                 layers.append(("logits", prediction["logits"]))
                 layers.insert(0, ("input", prediction["input"]))
