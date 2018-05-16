@@ -43,6 +43,7 @@ def w2l_model_fn(features, labels, mode, params, config):
                     the automatically annealed one.
             mmd: Coefficient for MMD loss for latent space (Wasserstein VAE
                  thingy).
+            bottleneck: Size of bottleneck (latent representation).
         config: RunConfig object passed through from Estimator.
         
     Returns:
@@ -62,6 +63,7 @@ def w2l_model_fn(features, labels, mode, params, config):
     momentum = params["momentum"]
     fix_lr = params["fix_lr"]
     mmd = params["mmd"]
+    bottleneck = params["bottleneck"]
 
     # construct model input -> output
     audio, seq_lengths = features["audio"], features["length"]
@@ -74,7 +76,7 @@ def w2l_model_fn(features, labels, mode, params, config):
         pre_out, total_stride, encoder_layers = read_apply_model_config(
             model_config, audio, act=act, batchnorm=use_bn,
             train=mode == tf.estimator.ModeKeys.TRAIN, data_format=data_format,
-            vis=vis, reg=reg_type)
+            vis=vis, reg=reg_type, bottleneck=bottleneck)
         # output size is vocab size + 1 for the extra "trash symbol" in CTC
         logits, _ = conv_layer(
             pre_out, vocab_size + 1, 1, 1, 1,
@@ -110,7 +112,7 @@ def w2l_model_fn(features, labels, mode, params, config):
                            "input": audio,
                            "input_length": seq_lengths_original,
                            "reconstruction": reconstructed}
-            for name, act in encoder_layers:
+            for name, act in encoder_layers + decoder_layers:
                 predictions[name] = act
             #decoded = decode(logits_tm, seq_lengths, top_paths=100,
             #                 pad_val=-1)
@@ -237,7 +239,7 @@ def w2l_model_fn(features, labels, mode, params, config):
 # Helper functions for building inference models.
 ###############################################################################
 def read_apply_model_config(config_path, inputs, act, batchnorm, train,
-                            data_format, vis, reg):
+                            data_format, vis, reg, bottleneck):
     """Read a model config file and apply it to an input.
 
     A config file is a csv file where each line stands for a layer or a whole
@@ -267,6 +269,7 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
                      assumes that it's last.
         vis: Bool, whether to add histograms for layer activations.
         reg: Either None or string giving regularizer type.
+        bottleneck: Size of latent representation (last encoder layer).
 
     Returns:
         Output of the last layer/block, total stride of the network and a list
@@ -287,6 +290,7 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
             if ind == len(config_strings) - 1:
                 act = None  # lol
                 batchnorm = False  # double lol
+                n_f = bottleneck  # lollercoaster
             if t == "layer":
                 previous, pars = conv_layer(
                     previous, n_f, w_f, s_f, d_f, act, batchnorm, train,

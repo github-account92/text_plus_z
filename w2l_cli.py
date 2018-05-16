@@ -38,6 +38,10 @@ parser.add_argument("-m", "--mmd",
                     default=0.,
                     help="Coefficient for MMD loss for latent space "
                          "(Wasserstein VAE). 0 (default) deactivates it.")
+parser.add_argument("-n", "--bottleneck",
+                    type=int,
+                    default=128,
+                    help="Size of bottleneck. Default: 128.")
 parser.add_argument("-r", "--reg",
                     nargs=2,
                     default=[None, "0.0"],
@@ -138,7 +142,8 @@ else:
 out = run_asr(mode=args.mode, data_config=args.data_config,
               model_config=args.model_config, model_dir=args.model_dir,
               act=args.act, batchnorm=not args.batchnorm_off,
-              data_format=args.data_format, mmd=args.mmd, reg=args.reg,
+              bottleneck=args.bottleneck, data_format=args.data_format,
+              mmd=args.mmd, reg=args.reg,
               adam_params=args.adam_params, batch_size=args.batch_size,
               clipping=args.clipping, fix_lr=args.fix_lr,
               momentum=args.momentum, normalize=not args.normalize_off,
