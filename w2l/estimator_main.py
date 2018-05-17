@@ -10,8 +10,9 @@ from .estimator_model import w2l_model_fn
 
 
 def run_asr(mode, data_config, model_config, model_dir,
-            act="relu", batchnorm=True, bottleneck=128,
+            act="relu", ae_coeff=0., batchnorm=True, bottleneck=128,
             data_format="channels_first", mmd=False, reg=(None, 0.),
+            use_ctc=True,
             adam_params=(1e-4, 0.9, 0.9, 1e-8), batch_size=16, clipping=500,
             fix_lr=False, momentum=False, normalize=True, steps=500000,
             threshold=0., vis=100, which_sets=None, container=None):
@@ -72,7 +73,9 @@ def run_asr(mode, data_config, model_config, model_dir,
               "momentum": momentum,
               "fix_lr": fix_lr,
               "mmd": mmd,
-              "bottleneck": bottleneck}
+              "bottleneck": bottleneck,
+              "use_ctc": use_ctc,
+              "ae_coeff": ae_coeff}
     # we set infrequent "permanent" checkpoints
     # we also disable the default SummarySaverHook IF profiling is requested
     config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=1,
@@ -122,17 +125,18 @@ def run_asr(mode, data_config, model_config, model_dir,
                         transcriptions)):
 
                 predictions_repacked = dict()
-                if mode != "container":
-                    predictions_repacked["true"] = true
-                predictions_repacked["input_length"] = prediction["input_length"]
+                if use_ctc:
+                    if mode != "container":
+                        predictions_repacked["true"] = true
+                    predictions_repacked["input_length"] = prediction["input_length"]
 
-                #pred = prediction["decoding"]
-                # remove padding and convert to chars
-                #pred = [[p for p in candidate if p != -1] for candidate in pred]
-                #pred_ch = ["".join([ind_to_ch[ind] for ind in candidate])
-                #           for candidate in pred]
-                #pred_ch = [redo_repetitions(candidate) for candidate in pred_ch]
-                #predictions_repacked["decoding"] = pred_ch
+                    pred = prediction["decoding"]
+                    # remove padding and convert to chars
+                    pred = [[p for p in candidate if p != -1] for candidate in pred]
+                    pred_ch = ["".join([ind_to_ch[ind] for ind in candidate])
+                               for candidate in pred]
+                    pred_ch = [redo_repetitions(candidate) for candidate in pred_ch]
+                    predictions_repacked["decoding"] = pred_ch
 
                 # construct a sorted list of layers and their activations, with
                 # input and front and output (logits) in the back

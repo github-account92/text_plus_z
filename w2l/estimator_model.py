@@ -44,6 +44,8 @@ def w2l_model_fn(features, labels, mode, params, config):
             mmd: Coefficient for MMD loss for latent space (Wasserstein VAE
                  thingy).
             bottleneck: Size of bottleneck (latent representation).
+            use_ctc: Bool, whether to use CTC loss.
+            ae_coeff: Coefficient for AE loss.
         config: RunConfig object passed through from Estimator.
         
     Returns:
@@ -64,9 +66,12 @@ def w2l_model_fn(features, labels, mode, params, config):
     fix_lr = params["fix_lr"]
     mmd = params["mmd"]
     bottleneck = params["bottleneck"]
+    use_ctc = params["use_ctc"]
+    ae_coeff = params["ae_coeff"]
 
     # construct model input -> output
     audio, seq_lengths = features["audio"], features["length"]
+    n_channels = audio.shape.as_list()[1]
     if labels is not None:  # predict passes labels=None...
         labels = labels["transcription"]
     if data_format == "channels_last":
@@ -77,15 +82,25 @@ def w2l_model_fn(features, labels, mode, params, config):
             model_config, audio, act=act, batchnorm=use_bn,
             train=mode == tf.estimator.ModeKeys.TRAIN, data_format=data_format,
             vis=vis, reg=reg_type, bottleneck=bottleneck)
+
         # output size is vocab size + 1 for the extra "trash symbol" in CTC
         logits, _ = conv_layer(
             pre_out, vocab_size + 1, 1, 1, 1,
-            act=None, batchnorm=False, train=False,
-            data_format=data_format, vis=vis, reg=False, name="logits")
-        reconstructed, decoder_layers = read_apply_model_config_inverted(
-            model_config, pre_out, act=act, batchnorm=use_bn,
+            act=None, batchnorm=False, train=False, data_format=data_format,
+            vis=vis, reg=False, name="logits")
+        latent, _ = conv_layer(
+            pre_out, bottleneck, 1, 1, 1,
+            act=None, batchnorm=False, train=False, data_format=data_format,
+            vis=vis, reg=False, name="latent")
+
+        pre_rec, decoder_layers = read_apply_model_config_inverted(
+            model_config, latent, act=act, batchnorm=use_bn,
             train=mode == tf.estimator.ModeKeys.TRAIN, data_format=data_format,
             vis=vis, reg=reg_type)
+        reconstructed, _ = transposed_conv_layer(
+            pre_rec, n_channels, 1, 1, 1,
+            act=None, batchnorm=False, train=False, data_format=data_format,
+            vis=vis, reg=False, name="reconstructed")
 
     # after this we need logits in shape time x batch_size x vocab_size
     if data_format == "channels_first":  # bs x v x t -> t x bs x v
@@ -114,45 +129,48 @@ def w2l_model_fn(features, labels, mode, params, config):
                            "reconstruction": reconstructed}
             for name, act in encoder_layers + decoder_layers:
                 predictions[name] = act
-            #decoded = decode(logits_tm, seq_lengths, top_paths=100,
-            #                 pad_val=-1)
-            #predictions["decoding"] = decoded
+            if use_ctc:
+                decoded = decode(logits_tm, seq_lengths, top_paths=100,
+                                 pad_val=-1)
+                predictions["decoding"] = decoded
 
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
     with tf.name_scope("loss"):
-        """
         total_loss = 0
-        # ctc wants the labels as a sparse tensor
-        # note that labels are NOT time-major, but this is intended
-        with tf.name_scope("ctc"):
-            labels_sparse = dense_to_sparse(labels, sparse_val=-1)
-            ctc_loss = tf.reduce_mean(tf.nn.ctc_loss(
-                labels=labels_sparse, inputs=logits_tm,
-                sequence_length=seq_lengths, time_major=True),
-                                      name="avg_loss")
-        tf.summary.scalar("ctc_loss", ctc_loss)
-        total_loss += ctc_loss
-        """
-        with tf.name_scope("reconstruction_loss"):
-            mask = tf.sequence_mask(seq_lengths_original, dtype=tf.float32)
-            if data_format == "channels_first":
-                mask = mask[:, tf.newaxis, :]
-            else:
-                mask = mask[:, :, tf.newaxis]
-            reconstr_loss = tf.reduce_mean(
-                tf.squared_difference(audio, reconstructed) * mask)
-        tf.summary.scalar("reconstruction_loss", reconstr_loss)
-        total_loss = reconstr_loss
+        if use_ctc:
+            # ctc wants the labels as a sparse tensor
+            # note that labels are NOT time-major, but this is intended
+            with tf.name_scope("ctc"):
+                labels_sparse = dense_to_sparse(labels, sparse_val=-1)
+                ctc_loss = tf.reduce_mean(tf.nn.ctc_loss(
+                    labels=labels_sparse, inputs=logits_tm,
+                    sequence_length=seq_lengths, time_major=True),
+                                          name="avg_loss")
+            tf.summary.scalar("ctc_loss", ctc_loss)
+            total_loss += ctc_loss
+        if ae_coeff:
+            with tf.name_scope("reconstruction_loss"):
+                mask = tf.sequence_mask(seq_lengths_original, dtype=tf.float32)
+                if data_format == "channels_first":
+                    mask = mask[:, tf.newaxis, :]
+                else:
+                    mask = mask[:, :, tf.newaxis]
+                reconstr_loss = tf.reduce_mean(
+                    tf.squared_difference(audio, reconstructed) * mask)
+            tf.summary.scalar("reconstruction_loss", reconstr_loss)
 
-        # TODO random encoder
-        with tf.name_scope("mmd"):
-            latent = tf.layers.flatten(pre_out)[::10]
-            target_samples = tf.random_normal(tf.shape(latent))
-            mmd_loss = compute_mmd(target_samples, latent)
-        if mmd:
-            total_loss += mmd*mmd_loss
-        tf.summary.scalar("mmd_loss", mmd_loss)
+            # TODO random encoder
+            # TODO mask and fix dimensions!!
+            with tf.name_scope("mmd"):
+                latent_flat = tf.layers.flatten(latent)
+                target_samples = tf.random_normal(tf.shape(latent_flat))
+                mmd_loss = compute_mmd(target_samples, latent_flat)
+            ae_loss = reconstr_loss
+            if mmd:
+                ae_loss += mmd*mmd_loss
+            tf.summary.scalar("mmd_loss", mmd_loss)
+            total_loss += ae_coeff * ae_loss
 
         if reg_coeff:
             reg_losses = tf.losses.get_regularization_losses()
@@ -222,15 +240,17 @@ def w2l_model_fn(features, labels, mode, params, config):
     # NOTE that this is only letter error rate; word error rates can be
     # obtained from run_asr in "errors" mode.
     with tf.name_scope("evaluation"):
-        decoded = decode_top(logits_tm, seq_lengths, pad_val=-1,
-                             as_sparse=True)
-        #ed_dist = tf.reduce_mean(tf.edit_distance(decoded, labels_sparse),
-        #                         name="edit_distance_batch_mean")
-        eval_metric_ops = {
-            "reconstruction_loss": tf.metrics.mean(reconstr_loss),
-            "mmd_loss": tf.metrics.mean(mmd_loss)}
-        #eval_metric_ops = {"edit_distance": tf.metrics.mean(
-        #    ed_dist, name="edit_distance_total_mean")}
+        eval_metric_ops = {}
+        if ae_coeff:
+            eval_metric_ops["reconstruction_loss"] = tf.metrics.mean(reconstr_loss)
+            eval_metric_ops["mmd_loss"] = tf.metrics.mean(mmd_loss)
+        if use_ctc:
+            decoded = decode_top(logits_tm, seq_lengths, pad_val=-1,
+                                 as_sparse=True)
+            ed_dist = tf.reduce_mean(tf.edit_distance(decoded, labels_sparse),
+                                     name="edit_distance_batch_mean")
+            eval_metric_ops["edit_distance"] = tf.metrics.mean(
+                ed_dist, name="edit_distance_total_mean")
     return tf.estimator.EstimatorSpec(mode=mode, loss=total_loss,
                                       eval_metric_ops=eval_metric_ops)
 
@@ -287,10 +307,6 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
         for ind, line in enumerate(config_strings):
             t, n_f, w_f, s_f, d_f = parse_model_config_line(line)
             name = "encoder_" + t + str(ind)
-            if ind == len(config_strings) - 1:
-                act = None  # lol
-                batchnorm = False  # double lol
-                n_f = bottleneck  # lollercoaster
             if t == "layer":
                 previous, pars = conv_layer(
                     previous, n_f, w_f, s_f, d_f, act, batchnorm, train,
@@ -349,19 +365,11 @@ def read_apply_model_config_inverted(config_path, inputs, act, batchnorm,
     with open(config_path) as model_config:
         total_stride = 1
         previous = inputs
-        # TODO make this less shitty
         config_strings = model_config.readlines()
 
         for ind, line in enumerate(reversed(config_strings)):
             t, n_f, w_f, s_f, d_f = parse_model_config_line(line)
-            try:
-                n_f = int(parse_model_config_line(config_strings[ind+1])[1])
-            except:
-                n_f = 128
             name = "decoder_" + t + str(ind)
-            if ind == len(config_strings) - 1:
-                act = None  # lol
-                batchnorm = False  # double lol
             if t == "layer":
                 previous, pars = transposed_conv_layer(
                     previous, n_f, w_f, s_f, d_f, act, batchnorm, train,

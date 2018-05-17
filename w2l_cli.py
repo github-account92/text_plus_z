@@ -27,6 +27,10 @@ parser.add_argument("-b", "--batchnorm_off",
                     help="Set to deactivate batch normalization. Batchnorm is "
                          "ON by default since training without it seems "
                          "highly unstable.")
+parser.add_argument("-c", "--ctc_off",
+                    action="store_true",
+                    help="Set to not use CTC loss (i.e. only do (variational) "
+                         "autoencoder).")
 parser.add_argument("-f", "--data_format",
                     default="channels_first",
                     choices=["channels_first", "channels_last"],
@@ -37,7 +41,8 @@ parser.add_argument("-m", "--mmd",
                     type=float,
                     default=0.,
                     help="Coefficient for MMD loss for latent space "
-                         "(Wasserstein VAE). 0 (default) deactivates it.")
+                         "(Wasserstein VAE). 0 (default) deactivates it to use"
+                         " a regular autoencoder.")
 parser.add_argument("-n", "--bottleneck",
                     type=int,
                     default=128,
@@ -49,6 +54,11 @@ parser.add_argument("-r", "--reg",
                     help="Which regularizer to use and the coefficient. Valid "
                          "choices are 'l1', 'l2', 'linf' and 'cos'. Default: "
                          "No regularization.")
+parser.add_argument("-v", "--ae_coeff",
+                    type=float,
+                    default=0.,
+                    help="Coefficient for reconstruction loss relative to CTC."
+                         "Default: 0 (not used).")
 
 parser.add_argument("-A", "--adam_params",
                     nargs=4,
@@ -141,9 +151,10 @@ else:
 
 out = run_asr(mode=args.mode, data_config=args.data_config,
               model_config=args.model_config, model_dir=args.model_dir,
-              act=args.act, batchnorm=not args.batchnorm_off,
-              bottleneck=args.bottleneck, data_format=args.data_format,
-              mmd=args.mmd, reg=args.reg,
+              act=args.act, ae_coeff=args.ae_coeff,
+              batchnorm=not args.batchnorm_off, bottleneck=args.bottleneck,
+              data_format=args.data_format, mmd=args.mmd, reg=args.reg,
+              use_ctc=not args.ctc_off,
               adam_params=args.adam_params, batch_size=args.batch_size,
               clipping=args.clipping, fix_lr=args.fix_lr,
               momentum=args.momentum, normalize=not args.normalize_off,
