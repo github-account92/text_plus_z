@@ -42,7 +42,10 @@ parser.add_argument("-m", "--mmd",
                     default=0.,
                     help="Coefficient for MMD loss for latent space "
                          "(Wasserstein VAE). 0 (default) deactivates it to use"
-                         " a regular autoencoder.")
+                         " a regular autoencoder. NOTE that this coefficient is"
+                         " relative to the reconstruction loss only, and the "
+                         "sum of that and this loss will be weighted relative "
+                         "to CTC (via the -v argument).")
 parser.add_argument("-n", "--bottleneck",
                     type=int,
                     default=128,
@@ -58,7 +61,7 @@ parser.add_argument("-v", "--ae_coeff",
                     type=float,
                     default=0.,
                     help="Coefficient for reconstruction loss relative to CTC."
-                         "Default: 0 (not used).")
+                         " Default: 0 (not used).")
 
 parser.add_argument("-A", "--adam_params",
                     nargs=4,

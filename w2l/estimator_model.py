@@ -161,11 +161,14 @@ def w2l_model_fn(features, labels, mode, params, config):
             tf.summary.scalar("reconstruction_loss", reconstr_loss)
 
             # TODO random encoder
-            # TODO mask and fix dimensions!!
             with tf.name_scope("mmd"):
+                if data_format == "channels_first":
+                    latent = tf.transpose(latent, [0, 2, 1])
                 latent_flat = tf.layers.flatten(latent)
-                target_samples = tf.random_normal(tf.shape(latent_flat))
-                mmd_loss = compute_mmd(target_samples, latent_flat)
+                mask_flat = tf.cast(tf.reshape(mask, [-1]), tf.bool)
+                latent_masked = tf.boolean_mask(latent_flat, mask_flat)
+                target_samples = tf.random_normal(tf.shape(latent_masked))
+                mmd_loss = compute_mmd(target_samples, latent_masked)
             ae_loss = reconstr_loss
             if mmd:
                 ae_loss += mmd*mmd_loss
