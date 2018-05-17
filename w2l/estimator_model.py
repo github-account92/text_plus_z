@@ -81,7 +81,7 @@ def w2l_model_fn(features, labels, mode, params, config):
         pre_out, total_stride, encoder_layers = read_apply_model_config(
             model_config, audio, act=act, batchnorm=use_bn,
             train=mode == tf.estimator.ModeKeys.TRAIN, data_format=data_format,
-            vis=vis, reg=reg_type, bottleneck=bottleneck)
+            vis=vis, reg=reg_type)
 
         # output size is vocab size + 1 for the extra "trash symbol" in CTC
         logits, _ = conv_layer(
@@ -262,7 +262,7 @@ def w2l_model_fn(features, labels, mode, params, config):
 # Helper functions for building inference models.
 ###############################################################################
 def read_apply_model_config(config_path, inputs, act, batchnorm, train,
-                            data_format, vis, reg, bottleneck):
+                            data_format, vis, reg):
     """Read a model config file and apply it to an input.
 
     A config file is a csv file where each line stands for a layer or a whole
@@ -292,7 +292,6 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
                      assumes that it's last.
         vis: Bool, whether to add histograms for layer activations.
         reg: Either None or string giving regularizer type.
-        bottleneck: Size of latent representation (last encoder layer).
 
     Returns:
         Output of the last layer/block, total stride of the network and a list
@@ -371,7 +370,13 @@ def read_apply_model_config_inverted(config_path, inputs, act, batchnorm,
         config_strings = model_config.readlines()
 
         for ind, line in enumerate(reversed(config_strings)):
+            # TODO this sucks lol
             t, n_f, w_f, s_f, d_f = parse_model_config_line(line)
+            try:
+                n_f = int(parse_model_config_line(config_strings[ind + 1])[1])
+            except:
+                n_f = 256
+
             name = "decoder_" + t + str(ind)
             if t == "layer":
                 previous, pars = transposed_conv_layer(
