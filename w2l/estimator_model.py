@@ -92,9 +92,11 @@ def w2l_model_fn(features, labels, mode, params, config):
             pre_out, bottleneck, 1, 1, 1,
             act=None, batchnorm=False, train=False, data_format=data_format,
             vis=vis, reg=False, name="latent")
+        joint = tf.concat([logits, latent],
+                          axis=1 if data_format == "channels_first" else 2)
 
         pre_rec, decoder_layers = read_apply_model_config_inverted(
-            model_config, latent, act=act, batchnorm=use_bn,
+            model_config, joint, act=act, batchnorm=use_bn,
             train=mode == tf.estimator.ModeKeys.TRAIN, data_format=data_format,
             vis=vis, reg=reg_type)
         reconstructed, _ = transposed_conv_layer(
@@ -164,8 +166,8 @@ def w2l_model_fn(features, labels, mode, params, config):
             with tf.name_scope("mmd"):
                 if data_format == "channels_first":
                     latent = tf.transpose(latent, [0, 2, 1])
-                latent_flat = tf.layers.flatten(latent)
-                mask_flat = tf.cast(tf.reshape(mask, [-1]), tf.bool)
+                latent_flat = tf.reshape(latent, [-1, tf.shape(latent)[-1]])[::20]
+                mask_flat = tf.reshape(tf.sequence_mask(seq_lengths), [-1])[::20]
                 latent_masked = tf.boolean_mask(latent_flat, mask_flat)
                 target_samples = tf.random_normal(tf.shape(latent_masked))
                 mmd_loss = compute_mmd(target_samples, latent_masked)
