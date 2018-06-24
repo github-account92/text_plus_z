@@ -126,6 +126,7 @@ def w2l_model_fn(features, labels, mode, params, config):
                                logits,
                                dim=1 if data_format == "channels_first" else -1,
                                name="softmax_probabilities"),
+                           "latent": latent,
                            "input": audio,
                            "input_length": seq_lengths_original,
                            "reconstruction": reconstructed}
@@ -166,6 +167,10 @@ def w2l_model_fn(features, labels, mode, params, config):
             with tf.name_scope("mmd"):
                 if data_format == "channels_first":
                     latent = tf.transpose(latent, [0, 2, 1])
+                # we only take each 20th entry in the time axis as sample
+                # this is to reduce RAM usage but should also reduce
+                # dependencies between the samples (since technically they are
+                # assumed to be independent, I believe...)
                 latent_flat = tf.reshape(latent, [-1, tf.shape(latent)[-1]])[::20]
                 mask_flat = tf.reshape(tf.sequence_mask(seq_lengths), [-1])[::20]
                 latent_masked = tf.boolean_mask(latent_flat, mask_flat)
