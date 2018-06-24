@@ -144,6 +144,7 @@ def run_asr(mode, data_config, model_config, model_dir,
                           leading_string(n) in ["encoder_layer", "decoder_layer", "block", "dense"]]
                 layers.sort(key=lambda tup: trailing_num(tup[0]))
                 layers.append(("logits", prediction["logits"]))
+                layers.append(("latent", prediction["latent"]))
                 layers.insert(0, ("input", prediction["input"]))
 
                 predictions_repacked["all_layers"] = layers
