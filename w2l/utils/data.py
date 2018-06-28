@@ -7,8 +7,8 @@ from w2l.utils.rejects import GERMAN_REJECTS
 
 
 DATA_CONFIG_EXPECTED_ENTRIES = {
-    "csv_path", "array_dir", "vocab_path", "n_freqs", "window_size",
-    "hop_length", "normalize"}
+    "csv_path", "array_dir", "vocab_path", "data_type", "n_freqs",
+    "window_size", "hop_length", "normalize"}
 DATA_CONFIG_INT_ENTRIES = {"n_freqs", "window_size", "hop_length"}
 DATA_CONFIG_BOOL_ENTRIES = {"normalize"}
 
@@ -21,13 +21,15 @@ def read_data_config(config_path):
         array_dir: Path to the directory containing the corresponding numpy
                    arrays.
         vocab_path: Path to a vocabulary file such as one created by vocab.py.
+        data_type: One of 'raw' or 'mel'.
         n_freqs: Frequencies (e.g. STFT or mel bins) to be expected in the
                  data. Will lead to problems if this does not match with
-                 reality.
+                 reality. If data_type is 'raw' this should be 1!
         window_size: Window size to use for STFT (n_fft argument in librosa).
                      Relevant for preprocessing only (and for you to know the
-                     parameters of the data).
-        hop_length: STFT hop length. See window_size.
+                     parameters of the data). Ignored if data_type is 'raw'.
+        hop_length: STFT hop length. See window_size. Ignored if data_type is
+                    'raw'.
         normalize: Whether to normalize data in preprocessing. True or False.
         
     Entries can be in any order. Missing or superfluous entries will result in
@@ -93,6 +95,7 @@ def extract_transcriptions(csv_path, which_sets):
 
 
 def checkpoint_iterator(ckpt_folder):
+    # TODO new estimator arguments can probably make this less hacky!
     """Iterates over checkpoints in order and returns them.
 
     This modifies the "checkpoint meta file" directly which might not be the

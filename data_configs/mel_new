@@ -5,6 +5,7 @@
 csv_path,/data/corpus_new.csv
 array_dir,/data/cache/English_new
 vocab_path,/data/vocab_fair
+data_type,mel
 n_freqs,128
 window_size,400
 hop_length,160

@@ -5,6 +5,7 @@
 csv_path,/data/corpora/German/corpus-without-positional.csv
 array_dir,/data/cache/German
 vocab_path,/data/vocab_german
+data_type,mel
 n_freqs,128
 window_size,400
 hop_length,160

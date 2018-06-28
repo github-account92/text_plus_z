@@ -1,0 +1,10 @@
+# config for raw data
+# data is NOT normalized, but might not be too bad lol
+csv_path,/data/corpus_new.csv
+array_dir,/data/cache/English_new
+vocab_path,/data/vocab_fair
+data_type,raw
+n_freqs,1
+window_size,400
+hop_length,160
+normalize,False

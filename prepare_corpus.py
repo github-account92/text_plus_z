@@ -28,9 +28,10 @@ def fulfill_config(corpus_path, config_path, resample_rate=None):
         resample_rate: int. Hz to resample data to, if preprocessing is done.
     """
     data_config = read_data_config(config_path)
-    csv_path, array_dir, vocab_path = (data_config["csv_path"],
-                                       data_config["array_dir"],
-                                       data_config["vocab_path"])
+    csv_path, array_dir, vocab_path, data_type = (data_config["csv_path"],
+                                                  data_config["array_dir"],
+                                                  data_config["vocab_path"],
+                                                  data_config["data_type"])
     n_freqs, window_size, hop_length = (data_config["n_freqs"],
                                         data_config["window_size"],
                                         data_config["hop_length"])
@@ -52,8 +53,9 @@ def fulfill_config(corpus_path, config_path, resample_rate=None):
                                 "This could take a very long time. Type y/n "
                                 "(no exits the program):".format(array_dir))
         if create_data_dir.lower()[0] == "y":
-            preprocess_audio(csv_path, corpus_path, array_dir, n_freqs,
-                             window_size, hop_length, normalize, resample_rate)
+            preprocess_audio(csv_path, corpus_path, array_dir, data_type,
+                             n_freqs, window_size, hop_length, normalize,
+                             resample_rate)
         else:
             sys.exit("Data directory does not exist and creation not "
                      "requested.")
@@ -103,7 +105,7 @@ def make_corpus_csv(librispeech_path, out_path):
                     corpus_csv.write(",".join([fid, fpath, t, corpus]) + "\n")
 
 
-def preprocess_audio(csv_path, corpus_path, array_dir, n_freqs,
+def preprocess_audio(csv_path, corpus_path, array_dir, data_type, n_freqs,
                      window_size, hop_length, normalize, resample_rate=None):
     """Preprocess many audio files with requested parameters.
 
@@ -113,6 +115,9 @@ def preprocess_audio(csv_path, corpus_path, array_dir, n_freqs,
                      /data/corpora/German.
         array_dir: Path to directory where all the processed arrays should be
                    stored in.
+        data_type: One of 'raw' or 'mel'. Whether to apply mel spectrogram
+                   transformation. If 'raw', n_freqs, window_size and
+                   hop_length are ignored.
         n_freqs: Number of mel frequencies to use.
         window_size: STFT window size.
         hop_length: STFT hop length.
@@ -128,14 +133,20 @@ def preprocess_audio(csv_path, corpus_path, array_dir, n_freqs,
             fid, fpath, _, subset = line.strip().split(",")
             path = os.path.join(corpus_path, fpath)
             audio, sr = librosa.load(path, sr=resample_rate)
-            if sr != 16000:
+            if not resample_rate and sr != 16000:
                 raise ValueError("Sampling rate != 16000 found in "
-                                 "{}!".format(path))
+                                 "{} with no resampling "
+                                 "requested!".format(path))
+            if data_type == "mel":
+                audio = raw_to_mel(audio, sr, window_size, hop_length,
+                                    n_freqs, normalize)
+            else:  # data_type == "raw"
+                if normalize:
+                    audio = (audio - np.mean(audio)) / np.std(audio)
+                audio = audio[np.newaxis, :]  # add channel axis
 
-            logmel = raw_to_mel(audio, sr, window_size, hop_length, n_freqs,
-                                normalize)
             np.save(os.path.join(array_dir, fid + ".npy"),
-                    logmel.astype(np.float32))
+                    audio.astype(np.float32))
             if not n % 1000:
                 print("Processed {}...".format(n))
 
