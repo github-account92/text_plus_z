@@ -217,6 +217,7 @@ def w2l_model_fn(features, labels, mode, params, config):
                     lr_used, adam_args[1], use_nesterov=True)
             else:
                 optimizer = tf.train.AdamOptimizer(lr_used, *adam_args[1:])
+            optimizer = tf.contrib.estimator.TowerOptimizer(optimizer)
             if use_bn:
                 # necessary for batchnorm to work properly in inference mode
                 update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
