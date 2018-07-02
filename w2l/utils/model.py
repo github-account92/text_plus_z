@@ -1,4 +1,3 @@
-import numpy as np
 import tensorflow as tf
 
 
@@ -10,7 +9,7 @@ GRIDS = {16: (4, 4), 32: (8, 4), 64: (8, 8), 128: (16, 8), 256: (16, 16),
 
 
 def conv_layer(inputs, n_filters, width_filters, stride_filters, dilation, act,
-               batchnorm, train, data_format, vis, reg, name):
+               batchnorm, train, data_format, vis, name):
     """Build and apply a 1D convolutional layer without pooling.
 
     Parameters:
@@ -28,7 +27,6 @@ def conv_layer(inputs, n_filters, width_filters, stride_filters, dilation, act,
                      beforehand. I.e. if it's not first, this function simply
                      assumes that it's last.
         vis: Bool, whether to add a histogram for layer activations.
-        reg: Regularizer type to use, or None for no regularizer.
         name: Name of the layer (used for variable scope and summary).
 
     Returns:
@@ -46,9 +44,6 @@ def conv_layer(inputs, n_filters, width_filters, stride_filters, dilation, act,
             strides=stride_filters, dilation_rate=dilation,
             activation=None if batchnorm else act,
             use_bias=not batchnorm, padding="same", data_format=data_format,
-            kernel_regularizer=sebastians_magic_trick(
-                diff_norm=reg, weight_norm="l2", grid_dims=GRIDS[n_filters],
-                neighbor_size=3) if reg else None,
             name="conv")
 
         if batchnorm:
@@ -64,7 +59,7 @@ def conv_layer(inputs, n_filters, width_filters, stride_filters, dilation, act,
 
 def transposed_conv_layer(inputs, n_filters, width_filters, stride_filters,
                           dilation, act, batchnorm, train, data_format, vis,
-                          reg, name):
+                          name):
     """Build and apply a 1D transposed convolutional layer.
 
     Parameters:
@@ -82,7 +77,6 @@ def transposed_conv_layer(inputs, n_filters, width_filters, stride_filters,
                      beforehand. I.e. if it's not first, this function simply
                      assumes that it's last.
         vis: Bool, whether to add a histogram for layer activations.
-        reg: Regularizer type to use, or None for no regularizer.
         name: Name of the layer (used for variable scope and summary).
 
     Returns:
@@ -104,9 +98,6 @@ def transposed_conv_layer(inputs, n_filters, width_filters, stride_filters,
             inp_2d, filters=n_filters, kernel_size=(width_filters, 1),
             strides=(stride_filters, 1), activation=None if batchnorm else act,
             use_bias=not batchnorm, padding="same", data_format=data_format,
-            kernel_regularizer=sebastians_magic_trick(
-                diff_norm=reg, weight_norm="l2", grid_dims=GRIDS[n_filters],
-                neighbor_size=3) if reg else None,
             name="conv")
         if data_format == "channels_first":
             conv = tf.squeeze(conv, axis=3)
@@ -252,143 +243,8 @@ def residual_block_new(inputs, n_filters, width_filters, stride_filters, act,
 ###############################################################################
 # Regularizer
 ###############################################################################
-def sebastians_magic_trick(diff_norm, weight_norm, grid_dims, neighbor_size):
-    """Creates a neighborhood distance regularizer.
-
-    Parameters:
-        diff_norm: How to compute differences/distances between filters.
-                   Can be "l1", "l2" or "linf" for respective norms, or "cos"
-                   for cosine distance..
-        weight_norm: How to compute neighborhood weightings, i.e. how points
-                     further away in the neighborhood play into the overall
-                     penalty. Options same as for diff_norm, except for "cos".
-        grid_dims: 2-tuple or list giving the desired grid dimensions. Has to
-                   match the number of filters for the layer to regularize.
-        neighbor_size: int, giving the size of the neighborhood. Must be odd.
-                       E.g. giving 3 here will cause each filter to treat the
-                       immediately surrounding filters (including diagonally)
-                       as its neighborhood.
-    """
-    if not neighbor_size % 2:
-        raise ValueError("Neighborhood is not odd; this would mean no middle "
-                         "point!")
-
-    # first we compute the possible offsets around a given point
-    neighbors_per_direction = (neighbor_size - 1) // 2
-    neighbor_offsets = []
-    for offset_x in range(-neighbors_per_direction,
-                          neighbors_per_direction + 1):
-        for offset_y in range(-neighbors_per_direction,
-                              neighbors_per_direction + 1):
-            if offset_x == 0 and offset_y == 0:
-                continue  # skip center
-            neighbor_offsets.append([offset_x, offset_y])
-    neighbor_offsets = np.asarray(neighbor_offsets, dtype=np.int32)
-
-    len_x = grid_dims[0]
-    len_y = grid_dims[1]
-    filters_total = len_x * len_y
-
-    # get neighbors for each filter
-    neighbor_lists = []
-    for ci in range(filters_total):
-        neighbors = []
-        # derive x and y coordinate in filter space
-        cy = ci // len_x
-        cx = ci % len_x
-        for offset in neighbor_offsets:
-            offset_x = cx + offset[0]
-            offset_y = cy + offset[1]
-            if 0 <= offset_x < len_x and 0 <= offset_y < len_y:
-                # add neighbor if valid coordinate
-                ni = offset_y * len_x + offset_x
-                neighbors.append(ni)
-        neighbor_lists.append(neighbors)
-
-    # filter neighbor lists to only contain full neighborhoods
-    center_ids = []
-    neighbor_ids = []
-    for ci, nis in enumerate(neighbor_lists):
-        # e.g. in a 5x5 grid there are max. 24 neighbors
-        if len(nis) == neighbor_size**2 - 1:
-            center_ids.append(ci)
-            neighbor_ids.append(nis)
-    center_ids = np.asarray(center_ids, dtype=np.int32)
-    neighbor_ids = np.asarray(neighbor_ids, dtype=np.int32)
-
-    # weigh points further away in the neighborhood less
-    neighbor_weights = []
-    for offsets in neighbor_offsets:
-        if weight_norm == "l1":
-            d = np.abs(offsets).sum()
-        elif weight_norm == "l2":
-            d = np.sqrt((offsets*offsets).sum())
-        elif weight_norm == "linf":
-            d = np.abs(offsets).max()
-        else:
-            raise ValueError("Invalid weight norm specified: {}. "
-                             "Valid are 'l1', 'l2', "
-                             "'linf'.".format(weight_norm))
-        w = 1. / d
-        neighbor_weights.append(w)
-    neighbor_weights = np.asarray(neighbor_weights, dtype=np.float32)
-    neighbor_weights /= neighbor_weights.sum()  # normalize to sum=1
-    # neighbor_weights /= np.sqrt((neighbor_weights ** 2).sum())  # normalize to length=1
-
-    # now convert numpy arrays to tf constants
-    with tf.name_scope("nd_regularizer_sebastian"):
-        tf_neighbor_weights = tf.constant(neighbor_weights,
-                                          name='neighbor_weights')
-        tf_center_ids = tf.constant(center_ids, name='center_ids')
-        tf_neighbor_ids = tf.constant(neighbor_ids, name='neighbor_ids')
-
-        def neighbor_distance(filters):
-            n_filters = filters.shape.as_list()[-1]
-            if n_filters != filters_total:
-                raise ValueError(
-                    "Unsuitable grid for weight {}. "
-                    "Grid dimensions: {}, {} for a total of {} entries. "
-                    "Filters in weight: {}.".format(
-                        filters.name, len_x, len_y, filters_total, n_filters))
-            # filters to n_filters x d
-            filters = tf.reshape(filters, [-1, n_filters])
-            filters = tf.transpose(filters)
-
-            # broadcast to n_centers x 1 x d
-            tf_centers = tf.gather(filters, tf_center_ids)
-            tf_centers = tf.expand_dims(tf_centers, 1)
-
-            # n_centers x n_neighbors x d
-            tf_neighbors = tf.gather(filters, tf_neighbor_ids)
-
-            # compute pairwise distances, then weight, then sum up
-            # pairwise is always n_centers x n_neighbors
-            if diff_norm == "l1":
-                pairwise = tf.reduce_sum(tf.abs(tf_centers - tf_neighbors),
-                                         axis=-1)
-            elif diff_norm == "l2":
-                pairwise = tf.sqrt(
-                    tf.reduce_sum((tf_centers - tf_neighbors)**2, axis=-1))
-            elif diff_norm == "linf":
-                pairwise = tf.reduce_max(tf.abs(tf_centers - tf_neighbors),
-                                         axis=-1)
-            elif diff_norm == "cos":
-                dotprods = tf.reduce_sum(tf_centers * tf_neighbors, axis=-1)
-                center_norms = tf.norm(tf_centers, axis=-1)
-                neighbor_norms = tf.norm(tf_neighbors, axis=-1)
-                # NOTE this computes cosine *similarity* which is why we
-                # multiply by -1: minimize the negative similarity!
-                cosine_similarity = dotprods / (center_norms * neighbor_norms)
-                pairwise = -1 * cosine_similarity
-            else:
-                raise ValueError("Invalid difference norm specified: {}. "
-                                 "Valid are 'l1', 'l2', 'linf', "
-                                 "'cos'.".format(weight_norm))
-            pairwise_weighted = tf_neighbor_weights * pairwise
-            return tf.reduce_sum(pairwise_weighted) / \
-                pairwise_weighted.shape.as_list()[0]
-
-    return neighbor_distance
+def latent_variance_regularizer():
+    pass
 
 
 ###############################################################################

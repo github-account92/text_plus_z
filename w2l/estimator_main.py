@@ -11,7 +11,7 @@ from .estimator_model import w2l_model_fn
 
 def run_asr(mode, data_config, model_config, model_dir,
             act="relu", ae_coeff=0., batchnorm=True, bottleneck=128,
-            data_format="channels_first", mmd=False, reg=(None, 0.),
+            data_format="channels_first", mmd=False, reg=0.,
             use_ctc=True,
             adam_params=(1e-4, 0.9, 0.9, 1e-8), batch_size=16, clipping=500,
             fix_lr=False, momentum=False, normalize=True, steps=500000,
@@ -47,15 +47,6 @@ def run_asr(mode, data_config, model_config, model_dir,
         act = tf.nn.relu
     else:  # swish -- since no other choice is allowed
         def act(x): return x * tf.nn.sigmoid(x)
-
-    if reg[0] and reg[0] not in ["l1", "l2", "linf", "cos"]:
-        raise ValueError("Invalid regularizer {} specified. Valid choices: "
-                         "'l1', 'l2', 'linf', 'cos'.")
-    try:
-        reg = (reg[0], float(reg[1]))  # tuples are immutable...
-    except (ValueError, TypeError):
-        raise ValueError("Could not convert regularization coefficient '{}' "
-                         "to float.".format(reg[1]))
 
     # set up model
     ch_to_ind, ind_to_ch = parse_vocab(vocab_path)

@@ -56,12 +56,10 @@ parser.add_argument("-n", "--bottleneck",
                          "that thus you effectively have 30 more latent "
                          "dimensions reserved just for reconstruction.")
 parser.add_argument("-r", "--reg",
-                    nargs=2,
-                    default=[None, "0.0"],
-                    metavar=["reg_type", "reg_coeff"],
-                    help="Which regularizer to use and the coefficient. Valid "
-                         "choices are 'l1', 'l2', 'linf' and 'cos'. Default: "
-                         "No regularization.")
+                    type=float,
+                    default=0.,
+                    help="Latent regularizer coefficient.  Default: 0.0, "
+                         "meaning no regularization.")
 parser.add_argument("-v", "--ae_coeff",
                     type=float,
                     default=0.,

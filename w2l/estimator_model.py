@@ -35,8 +35,8 @@ def w2l_model_fn(features, labels, mode, params, config):
                       clipping.
             vis: Int, whether to include visualizations besides loss and steps
                  per time and if so how often.
-            reg: List containing string regularizer type (or None) and float
-                 coefficient for regularizer for conv layers. 0 disables it.
+            reg: float coefficient for regularizer for latent space. 0 disables
+                 it.
             momentum: Bool, if set use gradient descent with Nesterov momentum
                       instead of Adam.
             fix_lr: Bool, if set use the provided learning rate instead of
@@ -60,8 +60,7 @@ def w2l_model_fn(features, labels, mode, params, config):
     adam_args = params["adam_args"]
     clipping = params["clipping"]
     vis = params["vis"]
-    reg_type = params["reg"][0]
-    reg_coeff = params["reg"][1]
+    reg_coeff = params["reg"]
     momentum = params["momentum"]
     fix_lr = params["fix_lr"]
     mmd = params["mmd"]
@@ -81,28 +80,28 @@ def w2l_model_fn(features, labels, mode, params, config):
         pre_out, total_stride, encoder_layers = read_apply_model_config(
             model_config, audio, act=act, batchnorm=use_bn,
             train=mode == tf.estimator.ModeKeys.TRAIN, data_format=data_format,
-            vis=vis, reg=reg_type)
+            vis=vis)
 
         # output size is vocab size + 1 for the extra "trash symbol" in CTC
         logits, _ = conv_layer(
             pre_out, vocab_size + 1, 1, 1, 1,
             act=None, batchnorm=False, train=False, data_format=data_format,
-            vis=vis, reg=False, name="logits")
+            vis=vis, name="logits")
         latent, _ = conv_layer(
             pre_out, bottleneck, 1, 1, 1,
             act=None, batchnorm=False, train=False, data_format=data_format,
-            vis=vis, reg=False, name="latent")
+            vis=vis, name="latent")
         joint = tf.concat([logits, latent],
                           axis=1 if data_format == "channels_first" else 2)
 
         pre_rec, decoder_layers = read_apply_model_config_inverted(
             model_config, joint, act=act, batchnorm=use_bn,
             train=mode == tf.estimator.ModeKeys.TRAIN, data_format=data_format,
-            vis=vis, reg=reg_type)
+            vis=vis)
         reconstructed, _ = transposed_conv_layer(
             pre_rec, n_channels, 1, 1, 1,
             act=None, batchnorm=False, train=False, data_format=data_format,
-            vis=vis, reg=False, name="reconstructed")
+            vis=vis, name="reconstructed")
 
     # after this we need logits in shape time x batch_size x vocab_size
     if data_format == "channels_first":  # bs x v x t -> t x bs x v
@@ -182,6 +181,7 @@ def w2l_model_fn(features, labels, mode, params, config):
             tf.summary.scalar("mmd_loss", mmd_loss)
             total_loss += ae_coeff * ae_loss
 
+        # TODO adapt to new regularizer
         if reg_coeff:
             reg_losses = tf.losses.get_regularization_losses()
             reg_loss = (
@@ -253,15 +253,19 @@ def w2l_model_fn(features, labels, mode, params, config):
     with tf.name_scope("evaluation"):
         eval_metric_ops = {}
         if ae_coeff:
-            eval_metric_ops["reconstruction_loss"] = tf.metrics.mean(reconstr_loss)
-            eval_metric_ops["mmd_loss"] = tf.metrics.mean(mmd_loss)
+            eval_metric_ops["reconstruction_loss"] = tf.metrics.mean(
+                reconstr_loss, name="reconstruction_eval")
+            eval_metric_ops["mmd_loss"] = tf.metrics.mean(
+                mmd_loss, name="mmd_eval")
         if use_ctc:
             decoded = decode_top(logits_tm, seq_lengths, pad_val=-1,
                                  as_sparse=True)
             ed_dist = tf.reduce_mean(tf.edit_distance(decoded, labels_sparse),
                                      name="edit_distance_batch_mean")
             eval_metric_ops["edit_distance"] = tf.metrics.mean(
-                ed_dist, name="edit_distance_total_mean")
+                ed_dist, name="edit_distance_eval")
+            eval_metric_ops["ctc_loss"] = tf.metrics.mean(
+                ctc_loss, name="ctc_eval")
     return tf.estimator.EstimatorSpec(mode=mode, loss=total_loss,
                                       eval_metric_ops=eval_metric_ops)
 
@@ -270,7 +274,7 @@ def w2l_model_fn(features, labels, mode, params, config):
 # Helper functions for building inference models.
 ###############################################################################
 def read_apply_model_config(config_path, inputs, act, batchnorm, train,
-                            data_format, vis, reg):
+                            data_format, vis):
     """Read a model config file and apply it to an input.
 
     A config file is a csv file where each line stands for a layer or a whole
@@ -299,7 +303,6 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
                      beforehand. I.e. if it's not first, this function simply
                      assumes that it's last.
         vis: Bool, whether to add histograms for layer activations.
-        reg: Either None or string giving regularizer type.
 
     Returns:
         Output of the last layer/block, total stride of the network and a list
@@ -320,7 +323,7 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
             if t == "layer":
                 previous, pars = conv_layer(
                     previous, n_f, w_f, s_f, d_f, act, batchnorm, train,
-                    data_format, vis, reg=reg, name=name)
+                    data_format, vis, name=name)
             # TODO residual/dense blocks ignore some parameters ATM!
             elif t == "block":
                 previous, pars = residual_block(
@@ -343,7 +346,7 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
 
 
 def read_apply_model_config_inverted(config_path, inputs, act, batchnorm,
-                                     train, data_format, vis, reg):
+                                     train, data_format, vis):
     """As above, but applies the config in reverse order with transposed
      convolutions.
 
@@ -361,7 +364,6 @@ def read_apply_model_config_inverted(config_path, inputs, act, batchnorm,
                      beforehand. I.e. if it's not first, this function simply
                      assumes that it's last.
         vis: Bool, whether to add histograms for layer activations.
-        reg: Either None or string giving regularizer type.
 
     Returns:
         Output of the last layer/block and a list of all layer/block
@@ -389,7 +391,7 @@ def read_apply_model_config_inverted(config_path, inputs, act, batchnorm,
             if t == "layer":
                 previous, pars = transposed_conv_layer(
                     previous, n_f, w_f, s_f, d_f, act, batchnorm, train,
-                    data_format, vis, reg=reg, name=name)
+                    data_format, vis, name=name)
             # TODO residual/dense blocks ignore some parameters ATM!
             elif t == "block":
                 previous, pars = residual_block(
