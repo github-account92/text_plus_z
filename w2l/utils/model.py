@@ -243,8 +243,18 @@ def residual_block_new(inputs, n_filters, width_filters, stride_filters, act,
 ###############################################################################
 # Regularizer
 ###############################################################################
-def latent_variance_regularizer():
-    pass
+def feature_map_variance_regularizer(feature_map):
+    """Compute mean variance for a batch of 1D conv feature maps.
+
+    Parameters:
+        feature_map: 3D tensor of shape batch x time x channels. Note that this
+        is always assumed to be channels_last! Do the transformation
+        beforehand.
+
+    Returns: Mean variance over the time axis.
+    """
+    _, var = tf.nn.moments(feature_map, axes=1)
+    return tf.reduce_mean(var)
 
 
 ###############################################################################

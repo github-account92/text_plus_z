@@ -4,7 +4,8 @@ import tensorflow as tf
 from .utils.hooks import SummarySaverHookWithProfile
 from .utils.model import (conv_layer, decode, decode_top, dense_to_sparse,
                           lr_annealer, clip_and_step, residual_block,
-                          dense_block, transposed_conv_layer, compute_mmd)
+                          dense_block, transposed_conv_layer, compute_mmd,
+                          feature_map_variance_regularizer)
 
 
 def w2l_model_fn(features, labels, mode, params, config):
@@ -183,10 +184,7 @@ def w2l_model_fn(features, labels, mode, params, config):
 
         # TODO adapt to new regularizer
         if reg_coeff:
-            reg_losses = tf.losses.get_regularization_losses()
-            reg_loss = (
-                tf.add_n(reg_losses, name="total_regularization_loss") /
-                len(reg_losses))
+            reg_loss = feature_map_variance_regularizer(latent)
             tf.summary.scalar("reg_loss", reg_loss)
             total_loss += reg_coeff * reg_loss
 
