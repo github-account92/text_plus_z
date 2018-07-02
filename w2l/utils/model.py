@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 
 
@@ -243,7 +244,9 @@ def residual_block_new(inputs, n_filters, width_filters, stride_filters, act,
 ###############################################################################
 # Regularizer
 ###############################################################################
-def feature_map_variance_regularizer(feature_map):
+def feature_map_global_variance_regularizer(feature_map):
+    # TODO alternatively, use 1D version of the old filter map thing
+    # this would punish *local* variance, allowing (slow) change
     """Compute mean variance for a batch of 1D conv feature maps.
 
     Parameters:
@@ -255,6 +258,94 @@ def feature_map_variance_regularizer(feature_map):
     """
     _, var = tf.nn.moments(feature_map, axes=1)
     return tf.reduce_mean(var)
+
+
+def feature_map_local_variance_regularizer(feature_map, diff_norm,
+                                           neighbor_size):
+    # TODO as of now, this loss is NOT INVARIANT TO BATCH SIZE!!
+    """Creates a neighborhood distance regularizer.
+    Parameters:
+        feature_map: 3D tensor of shape batch x channels x time. Note that this
+        is always assumed to be channels_first! Do the transformation
+        beforehand if necessary.
+        diff_norm: How to compute differences/distances between filters.
+                   Can be "l1", "l2" or "linf" for respective norms, or "cos"
+                   for cosine distance..
+        grid_dims: 2-tuple or list giving the desired grid dimensions. Has to
+                   match the number of filters for the layer to regularize.
+        neighbor_size: int, giving the size of the neighborhood. Must be odd.
+                       E.g. giving 3 here will cause each filter to treat the
+                       immediately surrounding filters as its neighborhood.
+    """
+    if not neighbor_size % 2:
+        raise ValueError("Neighborhood is not odd; this would mean no middle "
+                         "point!")
+
+    # IDEA
+    # collect IDs for centers and corresponding neighbors
+    # gather actual filters
+    # FLATTEN batch & channel? -> time x (batch*channel), gather from there
+    # shouldn't matter since we average over batch & channels anyway
+
+    with tf.name_scope("local_variance_regularizer"):
+        time = tf.shape(feature_map)[-1]
+        fmap_flat = tf.reshape(feature_map, [-1, time])
+        fmap_flat = tf.transpose(fmap_flat)
+
+        neighbors_per_direction = (neighbor_size - 1) // 2
+        center_ids = tf.range(neighbors_per_direction, time, dtype=tf.int32)
+
+        neighbor_offsets = list(range(-neighbors_per_direction,
+                                      neighbors_per_direction + 1))
+        neighbor_offsets.pop(neighbors_per_direction)  # remove center
+
+        def do_offset(offset):
+            return tf.range(neighbors_per_direction + offset, time + offset,
+                            dtype=tf.int32)
+        neighbor_ids = tf.stack([do_offset(offset)
+                                 for offset in neighbor_offsets],
+                                axis=1)
+
+        neighbor_offsets = np.asarray(neighbor_offsets, dtype=np.int32)
+
+        neighbor_weights = 1. / np.abs(neighbor_offsets.astype(np.float32))
+        neighbor_weights /= neighbor_weights.sum()  # normalize to sum=1
+        # neighbor_weights /= np.sqrt((neighbor_weights ** 2).sum())  # normalize to length=1
+        neighbor_weights = tf.constant(neighbor_weights,
+                                       name='neighbor_weights')
+
+        # broadcast to n_centers x 1 x d
+        centers = tf.gather(fmap_flat, center_ids)
+        centers = tf.expand_dims(centers, 1)
+
+        # n_centers x n_neighbors x d
+        neighbors = tf.gather(fmap_flat, neighbor_ids)
+
+        # compute pairwise distances, then weight, then sum up
+        # pairwise is always n_centers x n_neighbors
+        if diff_norm == "l1":
+            pairwise = tf.reduce_sum(tf.abs(centers - neighbors),
+                                     axis=-1)
+        elif diff_norm == "l2":
+            pairwise = tf.sqrt(
+                tf.reduce_sum((centers - neighbors) ** 2, axis=-1))
+        elif diff_norm == "linf":
+            pairwise = tf.reduce_max(tf.abs(centers - neighbors),
+                                     axis=-1)
+        elif diff_norm == "cos":
+            dotprods = tf.reduce_sum(centers * neighbors, axis=-1)
+            center_norms = tf.norm(centers, axis=-1)
+            neighbor_norms = tf.norm(neighbors, axis=-1)
+            # NOTE this computes cosine *similarity* which is why we
+            # multiply by -1: minimize the negative similarity!
+            cosine_similarity = dotprods / (center_norms * neighbor_norms)
+            pairwise = -1 * cosine_similarity
+        else:
+            raise ValueError("Invalid difference norm specified: {}. "
+                             "Valid are 'l1', 'l2', 'linf', "
+                             "'cos'.".format(diff_norm))
+        pairwise_weighted = neighbor_weights * pairwise
+        return tf.reduce_sum(pairwise_weighted) / tf.shape(pairwise_weighted)[0]
 
 
 ###############################################################################

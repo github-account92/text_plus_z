@@ -5,7 +5,7 @@ from .utils.hooks import SummarySaverHookWithProfile
 from .utils.model import (conv_layer, decode, decode_top, dense_to_sparse,
                           lr_annealer, clip_and_step, residual_block,
                           dense_block, transposed_conv_layer, compute_mmd,
-                          feature_map_variance_regularizer)
+                          feature_map_global_variance_regularizer)
 
 
 def w2l_model_fn(features, labels, mode, params, config):
@@ -166,12 +166,15 @@ def w2l_model_fn(features, labels, mode, params, config):
             # TODO random encoder
             with tf.name_scope("mmd"):
                 if data_format == "channels_first":
-                    latent = tf.transpose(latent, [0, 2, 1])
+                    latent_cl = tf.transpose(latent, [0, 2, 1])
+                else:
+                    latent_cl = latent
                 # we only take each 20th entry in the time axis as sample
                 # this is to reduce RAM usage but should also reduce
                 # dependencies between the samples (since technically they are
                 # assumed to be independent, I believe...)
-                latent_flat = tf.reshape(latent, [-1, tf.shape(latent)[-1]])[::20]
+                latent_flat = tf.reshape(latent_cl,
+                                         [-1, tf.shape(latent_cl)[-1]])[::20]
                 mask_flat = tf.reshape(tf.sequence_mask(seq_lengths), [-1])[::20]
                 latent_masked = tf.boolean_mask(latent_flat, mask_flat)
                 target_samples = tf.random_normal(tf.shape(latent_masked))
@@ -184,7 +187,9 @@ def w2l_model_fn(features, labels, mode, params, config):
 
         # TODO adapt to new regularizer
         if reg_coeff:
-            reg_loss = feature_map_variance_regularizer(latent)
+            if data_format == "channels_last":
+                latent = tf.transpose(latent, [0, 2, 1])
+            reg_loss = feature_map_global_variance_regularizer(latent)
             tf.summary.scalar("reg_loss", reg_loss)
             total_loss += reg_coeff * reg_loss
 

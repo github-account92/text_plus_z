@@ -54,7 +54,9 @@ parser.add_argument("-n", "--bottleneck",
                          "(for English: like 30 characters) for the purpose of "
                          "reconstruction. If you turn CTC off, keep in mind "
                          "that thus you effectively have 30 more latent "
-                         "dimensions reserved just for reconstruction.")
+                         "dimensions reserved just for reconstruction, and "
+                         "that these are *not* affected by MMD loss if that "
+                         "is used!")
 parser.add_argument("-r", "--reg",
                     type=float,
                     default=0.,
