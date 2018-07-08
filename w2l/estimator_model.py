@@ -2,9 +2,10 @@ import numpy as np
 import tensorflow as tf
 
 from .utils.hooks import SummarySaverHookWithProfile
-from .utils.model import (conv_layer, decode, decode_top, dense_to_sparse,
-                          lr_annealer, clip_and_step, residual_block,
-                          dense_block, transposed_conv_layer, compute_mmd,
+from .utils.layers import (conv_layer, residual_block, dense_block,
+                           transposed_conv_layer)
+from .utils.model import (decode, decode_top, dense_to_sparse, lr_annealer,
+                          clip_and_step, compute_mmd,
                           feature_map_global_variance_regularizer)
 
 
