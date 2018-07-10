@@ -197,66 +197,6 @@ def w2l_input_fn_from_container(array_container):
 
 
 ###############################################################################
-# For live recording
-###############################################################################
-"""
-def w2l_input_fn_live():
-    chunk = 1024
-    rate = 16000
-    threshold = 2000
-    grace_period = 1 * rate//chunk
-
-    # TODO parameter options!!
-    def gen():
-        pa = pyaudio.PyAudio()
-        stream = pa.open(format=pyaudio.paInt16, channels=1, rate=rate,
-                         input=True, output=True, frames_per_buffer=chunk)
-        print("Listening...")
-        while True:  # loop for producing distinct examples
-            seq_array = pyarray("h")
-            attentive = 0
-            while True:
-                chunk_array = pyarray("h", stream.read(chunk))
-                if byteorder == "big":
-                    chunk_array.byteswap()
-
-                loudest = max(chunk_array)
-                if loudest >= threshold:
-                    if not attentive:
-                        # haven't been paying attention, starting now
-                        print("\tAttending...")
-                    attentive = grace_period
-                    seq_array.extend(chunk_array)
-                else:
-                    if attentive:
-                        # have been paying attention, not hearing anything
-                        # anymore -> maybe stop attending
-                        seq_array.extend(chunk_array)
-                        attentive -= 1
-                        if not attentive:
-                            print("\t\tStopped!")
-                            break
-                    # nothing needs to be done if we are just hearing
-                    # continuing silence (below threshold, not attentive)
-
-            seq_array = np.frombuffer(seq_array, dtype=np.int16)
-            padded = np.pad(seq_array, (rate // 4, 0), "constant")
-            asfloat = padded.astype(np.float32) / 32768
-            yield raw_to_mel(asfloat, rate, 400, 160, 128, True)
-
-    with tf.variable_scope("input"):
-        data = tf.data.Dataset.from_generator(
-            gen, tf.float32)
-        data = data.batch(1)
-
-        # build iterator
-        print("\tBuilding iterator...")
-        iterator = data.make_one_shot_iterator()
-        return iterator.get_next()
-"""
-
-
-###############################################################################
 # Helpers
 ###############################################################################
 def pack_inputs_in_dict(audio, length, trans, trans_length):
