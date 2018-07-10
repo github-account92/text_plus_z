@@ -162,11 +162,10 @@ def raw_to_mel(audio, sampling_rate, window_size, hop_length, n_freqs,
     power = np.abs(spectro)**2
     mel = librosa.feature.melspectrogram(S=power, sr=sampling_rate,
                                          n_mels=n_freqs)
-    # EXPERIMENTAL invertible pseudo-normalization
-    logmel = (np.log(mel + 1e-11) + 10) / 10
+    logmel = np.log(mel + 1e-11)
     if normalize:
         logmel = (logmel - np.mean(logmel)) / np.std(logmel)
     if keep_phase:
-        phase_angle = np.angle(spectro) / np.pi
+        phase_angle = np.angle(spectro)
         logmel = np.concatenate((logmel, phase_angle))
     return logmel
