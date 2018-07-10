@@ -1,7 +1,3 @@
-# config for data preprocessed in accordance with the FAIR output
-# NOTE that this data is *not* normalized and is on a dB scale. You will
-# probably want to normalize it or at least scale it down when using it as
-# input
 csv_path,/data/corpus_new.csv
 array_dir,/cache/English_phase
 vocab_path,/data/vocab
@@ -10,4 +6,4 @@ n_freqs,128
 window_size,400
 hop_length,160
 normalize,False
-keep_phase,False
+keep_phase,True

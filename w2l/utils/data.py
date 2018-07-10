@@ -158,7 +158,7 @@ def raw_to_mel(audio, sampling_rate, window_size, hop_length, n_freqs,
         Processed spectrogram.
     """
     spectro = librosa.stft(audio, n_fft=window_size, hop_length=hop_length,
-                           center=False)
+                           center=True)
     power = np.abs(spectro)**2
     mel = librosa.feature.melspectrogram(S=power, sr=sampling_rate,
                                          n_mels=n_freqs)
