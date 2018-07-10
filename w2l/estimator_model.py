@@ -79,8 +79,12 @@ def w2l_model_fn(features, labels, mode, params, config):
         audio = tf.transpose(audio, [0, 2, 1])
 
     with tf.variable_scope("model"):
+        audio_normed = tf.layers.batch_normalization(
+            audio, axis=1 if data_format == "channels_first" else -1,
+            training=mode == tf.estimator.ModeKeys.TRAIN, name="input_norm")
+
         pre_out, total_stride, encoder_layers = read_apply_model_config(
-            model_config, audio, act=act, batchnorm=use_bn,
+            model_config, audio_normed, act=act, batchnorm=use_bn,
             train=mode == tf.estimator.ModeKeys.TRAIN, data_format=data_format,
             vis=vis)
 
