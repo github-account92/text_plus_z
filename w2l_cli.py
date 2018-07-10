@@ -100,13 +100,12 @@ parser.add_argument("-M", "--momentum",
                          "Nesterov momentum instead of Adam. In this case, "
                          "only the first two numbers passed to adam_params "
                          "are used (as learning rate and momentum).")
-parser.add_argument("-N", "--normalize_off",
+parser.add_argument("-N", "--normalize",
                     action="store_true",
-                    help="Pass this to *disable* data normalization. If this "
-                         "is not given, input arrays will be individually "
-                         "scaled to mean 0 and std 1. Keep in mind that the "
-                         "data may already have been normalized in "
-                         "preprocessing. Check the corresponding data config.")
+                    help="Pass this to enable data normalization. If this is "
+                         "given, input arrays will be individually scaled to "
+                         "mean 0 and std 1. Currently NOT recommended because "
+                         "it messes with sonification of the spectrograms!")
 parser.add_argument("-S", "--steps",
                     type=int,
                     default=500000,
@@ -165,6 +164,6 @@ out = run_asr(mode=args.mode, data_config=args.data_config,
               use_ctc=not args.ctc_off,
               adam_params=args.adam_params, batch_size=args.batch_size,
               clipping=args.clipping, fix_lr=args.fix_lr,
-              momentum=args.momentum, normalize=not args.normalize_off,
+              momentum=args.momentum, normalize=args.normalize,
               steps=args.steps, threshold=args.threshold, vis=args.vis,
               which_sets=which_sets)

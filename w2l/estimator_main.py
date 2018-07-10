@@ -14,7 +14,7 @@ def run_asr(mode, data_config, model_config, model_dir,
             data_format="channels_first", mmd=False, reg=0.,
             use_ctc=True,
             adam_params=(1e-4, 0.9, 0.9, 1e-8), batch_size=16, clipping=500,
-            fix_lr=False, momentum=False, normalize=True, steps=500000,
+            fix_lr=False, momentum=False, normalize=False, steps=500000,
             threshold=0., vis=100, which_sets=None, container=None):
     """
     All of these parameters can be passed from w2l_cli. Please check
