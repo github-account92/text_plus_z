@@ -40,6 +40,10 @@ def run_asr(mode, data_config, model_config, model_dir,
     csv_path, array_dir, vocab_path, mel_freqs = (
         data_config_dict["csv_path"], data_config_dict["array_dir"],
         data_config_dict["vocab_path"], data_config_dict["n_freqs"])
+    # if we have phase in the data, the input function needs to know about the
+    # additional channels
+    if data_config_dict["keep_phase"]:
+        mel_freqs += data_config_dict["window_size"] // 2 + 1
 
     if act == "elu":
         act = tf.nn.elu
@@ -127,7 +131,7 @@ def run_asr(mode, data_config, model_config, model_dir,
                     pred = [[p for p in candidate if p != -1] for candidate in pred]
                     pred_ch = ["".join([ind_to_ch[ind] for ind in candidate])
                                for candidate in pred]
-                    pred_ch = [redo_repetitions(candidate) for candidate in pred_ch]
+                    # pred_ch = [redo_repetitions(candidate) for candidate in pred_ch]
                     predictions_repacked["decoding"] = pred_ch
 
                 # construct a sorted list of layers and their activations, with

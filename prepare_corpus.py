@@ -26,6 +26,7 @@ def fulfill_config(corpus_path, config_path, resample_rate=None):
         /data/corpora/German.
         config_path: Path to config csv.
         resample_rate: int. Hz to resample data to, if preprocessing is done.
+                       TODO why is this not in the config lol
     """
     data_config = read_data_config(config_path)
     csv_path, array_dir, vocab_path, data_type = (data_config["csv_path"],
@@ -35,7 +36,7 @@ def fulfill_config(corpus_path, config_path, resample_rate=None):
     n_freqs, window_size, hop_length = (data_config["n_freqs"],
                                         data_config["window_size"],
                                         data_config["hop_length"])
-    normalize = data_config["normalize"]
+    normalize, keep_phase = data_config["normalize"], data_config["keep_phase"]
 
     if not os.path.exists(csv_path):
         print("The requested corpus csv {} does not seem to exist. "
@@ -55,7 +56,7 @@ def fulfill_config(corpus_path, config_path, resample_rate=None):
         if create_data_dir.lower()[0] == "y":
             preprocess_audio(csv_path, corpus_path, array_dir, data_type,
                              n_freqs, window_size, hop_length, normalize,
-                             resample_rate)
+                             resample_rate, keep_phase)
         else:
             sys.exit("Data directory does not exist and creation not "
                      "requested.")
@@ -106,7 +107,8 @@ def make_corpus_csv(librispeech_path, out_path):
 
 
 def preprocess_audio(csv_path, corpus_path, array_dir, data_type, n_freqs,
-                     window_size, hop_length, normalize, resample_rate=None):
+                     window_size, hop_length, normalize, resample_rate=None,
+                     keep_phase=False):
     """Preprocess many audio files with requested parameters.
 
     Parameters:
@@ -126,6 +128,8 @@ def preprocess_audio(csv_path, corpus_path, array_dir, data_type, n_freqs,
         resample_rate: int. Hz to resample data to. If not given, no resampling
                        is performed and any sample rate != 16000 leads to a
                        crash.
+        keep_phase: If set, keep the phase angle of the linear spectrogram and
+                    append it to the channels.
     """
     os.mkdir(array_dir)
     with open(csv_path) as corpus_csv:
@@ -139,7 +143,7 @@ def preprocess_audio(csv_path, corpus_path, array_dir, data_type, n_freqs,
                                  "requested!".format(path))
             if data_type == "mel":
                 audio = raw_to_mel(audio, sr, window_size, hop_length,
-                                    n_freqs, normalize)
+                                    n_freqs, normalize, keep_phase)
             else:  # data_type == "raw"
                 if normalize:
                     audio = (audio - np.mean(audio)) / np.std(audio)

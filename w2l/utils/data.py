@@ -8,9 +8,9 @@ from w2l.utils.rejects import GERMAN_REJECTS
 
 DATA_CONFIG_EXPECTED_ENTRIES = {
     "csv_path", "array_dir", "vocab_path", "data_type", "n_freqs",
-    "window_size", "hop_length", "normalize"}
+    "window_size", "hop_length", "normalize", "keep_phase"}
 DATA_CONFIG_INT_ENTRIES = {"n_freqs", "window_size", "hop_length"}
-DATA_CONFIG_BOOL_ENTRIES = {"normalize"}
+DATA_CONFIG_BOOL_ENTRIES = {"normalize", "keep_phase"}
 
 
 def read_data_config(config_path):
@@ -31,6 +31,8 @@ def read_data_config(config_path):
         hop_length: STFT hop length. See window_size. Ignored if data_type is
                     'raw'.
         normalize: Whether to normalize data in preprocessing. True or False.
+        keep_phase: If set, keep the phase angle of the linear spectrogram and
+                    append it to the channels.
         
     Entries can be in any order. Missing or superfluous entries will result in
     a crash. You can add comments via lines starting with '#'.
@@ -139,7 +141,7 @@ def checkpoint_iterator(ckpt_folder):
 
 
 def raw_to_mel(audio, sampling_rate, window_size, hop_length, n_freqs,
-               normalize):
+               normalize, keep_phase=False):
     """Go from 1D numpy array containing audio waves to mel spectrogram.
 
     Parameters:
@@ -149,13 +151,22 @@ def raw_to_mel(audio, sampling_rate, window_size, hop_length, n_freqs,
         hop_length: Distance between successive STFT windows.
         n_freqs: Number of mel frequency bins.
         normalize: If set, normalize log power spectrogram to mean 0, std 1.
+        keep_phase: If set, keep the phase angle of the linear spectrogram and
+                    append it to the channels.
+
+    Returns:
+        Processed spectrogram.
     """
     spectro = librosa.stft(audio, n_fft=window_size, hop_length=hop_length,
                            center=False)
     power = np.abs(spectro)**2
     mel = librosa.feature.melspectrogram(S=power, sr=sampling_rate,
                                          n_mels=n_freqs)
-    logmel = 10*np.log10(mel + 1e-11)
+    # EXPERIMENTAL invertible pseudo-normalization
+    logmel = (np.log(mel + 1e-11) + 10) / 10
     if normalize:
         logmel = (logmel - np.mean(logmel)) / np.std(logmel)
+    if keep_phase:
+        phase_angle = np.angle(spectro) / np.pi
+        logmel = np.concatenate((logmel, phase_angle))
     return logmel

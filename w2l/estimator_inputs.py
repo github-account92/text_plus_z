@@ -64,7 +64,7 @@ def w2l_input_fn_npy(csv_path, array_base_path, which_sets, train, vocab,
     print("\tCreating the dataset...")
     ids, _, transcrs = zip(*lines_split)
     files = [os.path.join(array_base_path, fid + ".npy") for fid in ids]
-    transcrs = [replace_repetitions(transcr) for transcr in transcrs]
+    # transcrs = [replace_repetitions(transcr) for transcr in transcrs]
 
     def _to_arrays(fname, trans):
         return _pyfunc_load_arrays_map_transcriptions(
