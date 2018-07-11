@@ -73,7 +73,7 @@ def run_asr(mode, data_config, model_config, model_dir,
               "ae_coeff": ae_coeff}
     # we set infrequent "permanent" checkpoints
     # we also disable the default SummarySaverHook IF profiling is requested
-    config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=1,
+    config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=3,
                                     save_summary_steps=None if vis else 100,
                                     model_dir=model_dir)
     mutli_gpu_model_fn = tf.contrib.estimator.replicate_model_fn(w2l_model_fn)
