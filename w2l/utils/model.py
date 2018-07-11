@@ -6,18 +6,16 @@ import tensorflow as tf
 # Regularizer
 ###############################################################################
 def feature_map_global_variance_regularizer(feature_map):
-    # TODO alternatively, use 1D version of the old filter map thing
-    # this would punish *local* variance, allowing (slow) change
     """Compute mean variance for a batch of 1D conv feature maps.
 
     Parameters:
         feature_map: 3D tensor of shape batch x time x channels. Note that this
-        is always assumed to be channels_last! Do the transformation
+        is always assumed to be channels_first! Do the transformation
         beforehand.
 
     Returns: Mean variance over the time axis.
     """
-    _, var = tf.nn.moments(feature_map, axes=1)
+    _, var = tf.nn.moments(feature_map, axes=2)
     return tf.reduce_mean(var)
 
 
