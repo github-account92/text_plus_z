@@ -6,7 +6,8 @@ from .utils.layers import (conv_layer, residual_block, dense_block,
                            transposed_conv_layer)
 from .utils.model import (decode, decode_top, dense_to_sparse, lr_annealer,
                           clip_and_step, compute_mmd,
-                          feature_map_global_variance_regularizer)
+                          feature_map_global_variance_regularizer,
+                          feature_map_local_variance_regularizer)
 
 
 def w2l_model_fn(features, labels, mode, params, config):
@@ -190,13 +191,13 @@ def w2l_model_fn(features, labels, mode, params, config):
             tf.summary.scalar("mmd_loss", mmd_loss)
             total_loss += ae_coeff * ae_loss
 
-        # TODO adapt to new regularizer
-        if reg_coeff:
-            if data_format == "channels_last":
-                latent = tf.transpose(latent, [0, 2, 1])
-            reg_loss = feature_map_global_variance_regularizer(latent)
-            tf.summary.scalar("reg_loss", reg_loss)
-            total_loss += reg_coeff * reg_loss
+            if reg_coeff:
+                if data_format == "channels_last":
+                    latent = tf.transpose(latent, [0, 2, 1])
+                reg_loss = feature_map_local_variance_regularizer(
+                    latent, "cos", 3)
+                tf.summary.scalar("reg_loss", reg_loss)
+                total_loss += reg_coeff * reg_loss
 
     if mode == tf.estimator.ModeKeys.TRAIN:
         with tf.variable_scope("optimizer"):

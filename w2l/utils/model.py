@@ -15,8 +15,9 @@ def feature_map_global_variance_regularizer(feature_map):
 
     Returns: Mean variance over the time axis.
     """
-    _, var = tf.nn.moments(feature_map, axes=2)
-    return tf.reduce_mean(var)
+    with tf.name_scope("global_variance_regularizer"):
+        _, var = tf.nn.moments(feature_map, axes=2)
+        return tf.reduce_mean(var)
 
 
 def feature_map_local_variance_regularizer(feature_map, diff_norm,

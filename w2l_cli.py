@@ -61,7 +61,8 @@ parser.add_argument("-r", "--reg",
                     type=float,
                     default=0.,
                     help="Latent regularizer coefficient.  Default: 0.0, "
-                         "meaning no regularization.")
+                         "meaning no regularization. No effect if autoencoder "
+                         "is not used!")
 parser.add_argument("-v", "--ae_coeff",
                     type=float,
                     default=0.,
