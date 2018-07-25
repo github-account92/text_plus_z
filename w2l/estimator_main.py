@@ -121,11 +121,11 @@ def run_asr(mode, data_config, model_config, model_dir,
                         transcriptions)):
 
                 predictions_repacked = dict()
-                if use_ctc:
-                    if mode != "container":
-                        predictions_repacked["true"] = true
-                    predictions_repacked["input_length"] = prediction["input_length"]
+                if mode != "container":
+                    predictions_repacked["true"] = true
+                predictions_repacked["input_length"] = prediction["input_length"]
 
+                if use_ctc:
                     pred = prediction["decoding"]
                     # remove padding and convert to chars
                     pred = [[p for p in candidate if p != -1] for candidate in pred]
@@ -135,7 +135,7 @@ def run_asr(mode, data_config, model_config, model_dir,
                     predictions_repacked["decoding"] = pred_ch
 
                 # construct a sorted list of layers and their activations, with
-                # input and front and output (logits) in the back
+                # input in front and output (logits) in the back
                 layers = [(n, a) for (n, a) in prediction.items() if
                           leading_string(n) in ["encoder_layer", "decoder_layer", "block", "dense"]]
                 layers.sort(key=lambda tup: trailing_num(tup[0]))

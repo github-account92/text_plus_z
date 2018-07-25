@@ -5,19 +5,27 @@ import tensorflow as tf
 ###############################################################################
 # Regularizer
 ###############################################################################
-def feature_map_global_variance_regularizer(feature_map):
+def feature_map_global_variance_regularizer(feature_map, mask):
+    # TODO bad because just encourages smaller-scale latents
     """Compute mean variance for a batch of 1D conv feature maps.
 
     Parameters:
-        feature_map: 3D tensor of shape batch x time x channels. Note that this
+        feature_map: 3D tensor of shape batch x channels x time. Note that this
         is always assumed to be channels_first! Do the transformation
         beforehand.
+        mask: 2D tensor, batch x time.
 
     Returns: Mean variance over the time axis.
     """
     with tf.name_scope("global_variance_regularizer"):
-        _, var = tf.nn.moments(feature_map, axes=2)
-        return tf.reduce_mean(var)
+        nonzeros = tf.count_nonzero(mask, axis=1, dtype=tf.float32, keepdims=True)[:, :, tf.newaxis]
+        means = tf.reduce_sum(feature_map, axis=2, keepdims=True) / nonzeros
+
+        deviations = tf.squared_difference(means, feature_map)
+        var = (tf.reduce_sum(deviations) /
+               (tf.reduce_sum(nonzeros)*feature_map.shape[1]))
+        # _, var = tf.nn.moments(feature_map, axes=2)
+        return var
 
 
 def feature_map_local_variance_regularizer(feature_map, diff_norm,
@@ -105,7 +113,8 @@ def feature_map_local_variance_regularizer(feature_map, diff_norm,
                              "Valid are 'l1', 'l2', 'linf', "
                              "'cos'.".format(diff_norm))
         pairwise_weighted = neighbor_weights * pairwise
-        return tf.reduce_sum(pairwise_weighted) / tf.shape(pairwise_weighted)[0]
+        return (tf.reduce_sum(pairwise_weighted) /
+                tf.cast(tf.shape(pairwise_weighted)[0], tf.float32))
 
 
 ###############################################################################

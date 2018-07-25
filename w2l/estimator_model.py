@@ -165,8 +165,12 @@ def w2l_model_fn(features, labels, mode, params, config):
                     mask = mask[:, tf.newaxis, :]
                 else:
                     mask = mask[:, :, tf.newaxis]
-                reconstr_loss = tf.reduce_mean(
-                    tf.squared_difference(audio, reconstructed) * mask)
+                # since we don't count errors on padding elements we need to be
+                # careful counting the total number of elements for averaging
+                reconstr_loss = (tf.reduce_sum(
+                    tf.squared_difference(audio, reconstructed) * mask) /
+                                 (n_channels * tf.count_nonzero(
+                                     mask, dtype=tf.float32)))
             tf.summary.scalar("reconstruction_loss", reconstr_loss)
 
             # TODO random encoder
@@ -181,7 +185,8 @@ def w2l_model_fn(features, labels, mode, params, config):
                 # assumed to be independent, I believe...)
                 latent_flat = tf.reshape(latent_cl,
                                          [-1, tf.shape(latent_cl)[-1]])[::20]
-                mask_flat = tf.reshape(tf.sequence_mask(seq_lengths), [-1])[::20]
+                mask_latent = tf.sequence_mask(seq_lengths)
+                mask_flat = tf.reshape(mask_latent, [-1])[::20]
                 latent_masked = tf.boolean_mask(latent_flat, mask_flat)
                 target_samples = tf.random_normal(tf.shape(latent_masked))
                 mmd_loss = compute_mmd(target_samples, latent_masked)
@@ -194,8 +199,8 @@ def w2l_model_fn(features, labels, mode, params, config):
             if reg_coeff:
                 if data_format == "channels_last":
                     latent = tf.transpose(latent, [0, 2, 1])
-                reg_loss = feature_map_local_variance_regularizer(
-                    latent, "cos", 3)
+                reg_loss = feature_map_global_variance_regularizer(
+                    latent, mask_latent)
                 tf.summary.scalar("reg_loss", reg_loss)
                 total_loss += reg_coeff * reg_loss
 
