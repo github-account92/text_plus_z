@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from .utils.data import (read_data_config, extract_transcriptions,
+from .utils.data import (read_data_config, extract_transcriptions_and_speaker,
                          checkpoint_iterator)
 from .utils.errors import letter_error_rate_corpus, word_error_rate_corpus
 from .utils.vocab import parse_vocab
@@ -115,14 +115,16 @@ def run_asr(mode, data_config, model_config, model_dir,
 
     elif mode == "predict" or mode == "errors" or mode == "container":
         def gen():
-            transcriptions = extract_transcriptions(csv_path, which_sets)
-            for ind, (prediction, true) in enumerate(
+            transcriptions, speakers = extract_transcriptions_and_speaker(
+                csv_path, which_sets)
+            for ind, (prediction, true, speaker) in enumerate(
                     zip(estimator.predict(input_fn=input_fn),
-                        transcriptions)):
+                        transcriptions, speakers)):
 
                 predictions_repacked = dict()
                 if mode != "container":
                     predictions_repacked["true"] = true
+                    predictions_repacked["speaker"] = speaker
                 predictions_repacked["input_length"] = prediction["input_length"]
 
                 if use_ctc:
