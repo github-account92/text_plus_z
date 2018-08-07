@@ -23,7 +23,8 @@ def feature_map_global_variance_regularizer(feature_map, mask):
 
         deviations = tf.squared_difference(means, feature_map)
         var = (tf.reduce_sum(deviations) /
-               (tf.reduce_sum(nonzeros)*feature_map.shape[1]))
+               (tf.reduce_sum(nonzeros)*tf.cast(tf.shape(feature_map)[1],
+                                                tf.float32)))
         # _, var = tf.nn.moments(feature_map, axes=2)
         return var
 
