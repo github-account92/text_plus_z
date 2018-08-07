@@ -185,14 +185,15 @@ def w2l_input_fn_from_container(array_container, only_decode):
         while True:
             as_mel = raw_to_mel(
                 array_container[0], 16000, 400, 160, 128,
-                normalize=True).astype(np.float32)
+                normalize=False, keep_phase=True).astype(np.float32)
             yield (as_mel, np.int32(as_mel.shape[-1]),
                    np.zeros(0, dtype=np.int32), np.int32(0), array_container[1])
 
     with tf.variable_scope("input"):
         data = tf.data.Dataset.from_generator(
             gen, (tf.float32, tf.int32, tf.int32, tf.int32, tf.float32))
-        data = data.padded_batch(1, ((128, -1), (), (1,), (), (29+15, -1)),
+        # TODO don't hardcode these numbers omg
+        data = data.padded_batch(1, ((329, -1), (), (1,), (), (29+15, -1)),
                                  (0., 0, 0, 0, 0.))
         data = data.map(pack_inputs_in_dict_cont, num_parallel_calls=3)
 
