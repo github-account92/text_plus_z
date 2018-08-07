@@ -161,7 +161,7 @@ def _pyfunc_load_arrays_map_transcriptions(file_name, trans, vocab, threshold,
 # To go straight from some collection of numpy arrays
 ###############################################################################
 # TODO more options
-def w2l_input_fn_from_container(array_container):
+def w2l_input_fn_from_container(array_container, only_decode):
     """Build input function from a container with 1D numpy arrays.
 
     Note that this will yield dummy transcriptions containing a single 0.
@@ -173,21 +173,28 @@ def w2l_input_fn_from_container(array_container):
                          be yielded. You need to modify this container from
                          outside to process more sequences. Only really
                          suitable for for estimator.predict.
+        only_decode: Assume that container input is latent space sample and
+                     simply pipe it through.
     Returns:
         get_next op of iterator.
     """
     def gen():
         while True:
-            as_mel = raw_to_mel(
-                array_container[0], 16000, 400, 160, 128,
-                normalize=True).astype(np.float32)
+            if only_decode:
+                as_mel = raw_to_mel(
+                    array_container[0], 16000, 400, 160, 128,
+                    normalize=True).astype(np.float32)
+            else:
+                as_mel = array_container[0]  # lol variable naming...
             yield (as_mel, np.int32(as_mel.shape[-1]),
-                   np.zeros(0, dtype=np.int32))
+                   np.zeros(0, dtype=np.int32), np.int32(0))
 
     with tf.variable_scope("input"):
         data = tf.data.Dataset.from_generator(
-            gen, (tf.float32, tf.int32, tf.int32))
-        data = data.padded_batch(1, ((128, -1), (), (1,)), (0., 0, 0))
+            gen, (tf.float32, tf.int32, tf.int32, tf.int32))
+        # TODO this sucks lol
+        data_shape = (29+15, 1) if only_decode else (128, -1)
+        data = data.padded_batch(1, (data_shape, (), (1,), ()), (0., 0, 0, 0))
         data = data.map(pack_inputs_in_dict, num_parallel_calls=3)
 
         # build iterator

@@ -15,7 +15,8 @@ def run_asr(mode, data_config, model_config, model_dir,
             use_ctc=True,
             adam_params=(1e-4, 0.9, 0.9, 1e-8), batch_size=16, clipping=500,
             fix_lr=False, momentum=False, normalize=False, steps=500000,
-            threshold=0., vis=100, which_sets=None, container=None):
+            threshold=0., vis=100, which_sets=None,
+            container=None, only_decode=False):
     """
     All of these parameters can be passed from w2l_cli. Please check
     that one for docs on what they are.
@@ -70,10 +71,11 @@ def run_asr(mode, data_config, model_config, model_dir,
               "mmd": mmd,
               "bottleneck": bottleneck,
               "use_ctc": use_ctc,
-              "ae_coeff": ae_coeff}
+              "ae_coeff": ae_coeff,
+              "only_decode": only_decode}
     # we set infrequent "permanent" checkpoints
     # we also disable the default SummarySaverHook IF profiling is requested
-    config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=3,
+    config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=6,
                                     save_summary_steps=None if vis else 100,
                                     model_dir=model_dir)
     mutli_gpu_model_fn = tf.contrib.estimator.replicate_model_fn(w2l_model_fn)
@@ -101,7 +103,7 @@ def run_asr(mode, data_config, model_config, model_dir,
                              "np.zeros(1000, dtype=np.float32).")
 
         def input_fn():
-            return w2l_input_fn_from_container(container)
+            return w2l_input_fn_from_container(container, only_decode)
     else:
         def input_fn():
             return w2l_input_fn_npy(
