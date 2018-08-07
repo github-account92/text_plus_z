@@ -173,29 +173,28 @@ def w2l_input_fn_from_container(array_container, only_decode):
                          be yielded. You need to modify this container from
                          outside to process more sequences. Only really
                          suitable for for estimator.predict.
-        only_decode: Assume that container input is latent space sample and
-                     simply pipe it through.
+                         IF only_decode is given the _second_ element will be
+                         taken as a latent sample! There always needs to be a
+                         second element because I can't be bothered to code
+                         this shit atm.
+        only_decode: See above.
     Returns:
         get_next op of iterator.
     """
     def gen():
         while True:
-            if only_decode:
-                as_mel = raw_to_mel(
-                    array_container[0], 16000, 400, 160, 128,
-                    normalize=True).astype(np.float32)
-            else:
-                as_mel = array_container[0]  # lol variable naming...
+            as_mel = raw_to_mel(
+                array_container[0], 16000, 400, 160, 128,
+                normalize=True).astype(np.float32)
             yield (as_mel, np.int32(as_mel.shape[-1]),
-                   np.zeros(0, dtype=np.int32), np.int32(0))
+                   np.zeros(0, dtype=np.int32), np.int32(0), array_container[1])
 
     with tf.variable_scope("input"):
         data = tf.data.Dataset.from_generator(
-            gen, (tf.float32, tf.int32, tf.int32, tf.int32))
-        # TODO this sucks lol
-        data_shape = (29+15, 1) if only_decode else (128, -1)
-        data = data.padded_batch(1, (data_shape, (), (1,), ()), (0., 0, 0, 0))
-        data = data.map(pack_inputs_in_dict, num_parallel_calls=3)
+            gen, (tf.float32, tf.int32, tf.int32, tf.int32, tf.float32))
+        data = data.padded_batch(1, ((128, -1), (), (1,), (), (29+15, -1)),
+                                 (0., 0, 0, 0, 0.))
+        data = data.map(pack_inputs_in_dict_cont, num_parallel_calls=3)
 
         # build iterator
         print("\tBuilding iterator...")
@@ -209,6 +208,12 @@ def w2l_input_fn_from_container(array_container, only_decode):
 def pack_inputs_in_dict(audio, length, trans, trans_length):
     """For estimator interface (only allows one input -> pack into dict)."""
     return ({"audio": audio, "length": length},
+            {"transcription": trans, "length": trans_length})
+
+
+def pack_inputs_in_dict_cont(audio, length, trans, trans_length, latent):
+    """For estimator interface (only allows one input -> pack into dict)."""
+    return ({"audio": audio, "length": length, "latent": latent},
             {"transcription": trans, "length": trans_length})
 
 

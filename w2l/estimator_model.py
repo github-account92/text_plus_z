@@ -83,30 +83,32 @@ def w2l_model_fn(features, labels, mode, params, config):
         audio = tf.transpose(audio, [0, 2, 1])
 
     with tf.variable_scope("model"):
-        if not only_decode:
-            audio_normed = tf.layers.batch_normalization(
-                audio, axis=1 if data_format == "channels_first" else -1,
-                training=mode == tf.estimator.ModeKeys.TRAIN, name="input_norm")
+        audio_normed = tf.layers.batch_normalization(
+            audio, axis=1 if data_format == "channels_first" else -1,
+            training=mode == tf.estimator.ModeKeys.TRAIN, name="input_norm")
 
-            pre_out, total_stride, encoder_layers = read_apply_model_config(
-                model_config, audio_normed, act=act, batchnorm=use_bn,
-                train=mode == tf.estimator.ModeKeys.TRAIN, data_format=data_format,
-                vis=vis)
+        pre_out, total_stride, encoder_layers = read_apply_model_config(
+            model_config, audio_normed, act=act, batchnorm=use_bn,
+            train=mode == tf.estimator.ModeKeys.TRAIN, data_format=data_format,
+            vis=vis)
 
-            # output size is vocab size + 1 for the extra "trash symbol" in CTC
-            logits, _ = conv_layer(
-                pre_out, vocab_size + 1, 1, 1, 1,
-                act=None, batchnorm=False, train=False, data_format=data_format,
-                vis=vis, name="logits")
-            latent, _ = conv_layer(
-                pre_out, bottleneck, 1, 1, 1,
-                act=None, batchnorm=False, train=False, data_format=data_format,
-                vis=vis, name="latent")
-            joint = tf.concat([logits, latent],
-                              axis=1 if data_format == "channels_first" else 2)
+        # output size is vocab size + 1 for the extra "trash symbol" in CTC
+        logits, _ = conv_layer(
+            pre_out, vocab_size + 1, 1, 1, 1,
+            act=None, batchnorm=False, train=False, data_format=data_format,
+            vis=vis, name="logits")
+        latent, _ = conv_layer(
+            pre_out, bottleneck, 1, 1, 1,
+            act=None, batchnorm=False, train=False, data_format=data_format,
+            vis=vis, name="latent")
+        joint = tf.concat([logits, latent],
+                          axis=1 if data_format == "channels_first" else 2)
 
-        if only_decode:
-            joint = features["audio"]
+        if only_decode:  # TODO accommodate channels_last
+            joint = features["latent"]
+            logits = joint[:, :29, :]
+            latent = joint[:, 29:, :]
+
         pre_rec, decoder_layers = read_apply_model_config_inverted(
             model_config, joint, act=act, batchnorm=use_bn,
             train=mode == tf.estimator.ModeKeys.TRAIN, data_format=data_format,
@@ -116,43 +118,38 @@ def w2l_model_fn(features, labels, mode, params, config):
             act=None, batchnorm=False, train=False, data_format=data_format,
             vis=vis, name="reconstructed")
 
-    if not only_decode:
-        # after this we need logits in shape time x batch_size x vocab_size
-        if data_format == "channels_first":  # bs x v x t -> t x bs x v
-            logits_tm = tf.transpose(logits, [2, 0, 1], name="logits_time_major")
-        else:  # channels last: bs x t x v -> t x bs x v
-            logits_tm = tf.transpose(logits, [1, 0, 2], name="logits_time_major")
+    # after this we need logits in shape time x batch_size x vocab_size
+    if data_format == "channels_first":  # bs x v x t -> t x bs x v
+        logits_tm = tf.transpose(logits, [2, 0, 1], name="logits_time_major")
+    else:  # channels last: bs x t x v -> t x bs x v
+        logits_tm = tf.transpose(logits, [1, 0, 2], name="logits_time_major")
 
-        # we need the "actual" input length *after* strided convolutions for CTC
-        # TODO the correctness of this needs to be verified
-        seq_lengths_original = seq_lengths  # to save them in predictions
-        if total_stride > 1:
-            seq_lengths = tf.cast(seq_lengths / total_stride, tf.int32)
+    # we need the "actual" input length *after* strided convolutions for CTC
+    # TODO the correctness of this needs to be verified
+    seq_lengths_original = seq_lengths  # to save them in predictions
+    if total_stride > 1:
+        seq_lengths = tf.cast(seq_lengths / total_stride, tf.int32)
 
     if mode == tf.estimator.ModeKeys.PREDICT:
         with tf.name_scope("predictions"):
             # note that "all_layers" does not include the outputs (logits)
             # predictions have to map strings to tensors, so I can't just
             # add the list -- beware the loss of ordering in dict
-            if not only_decode:
-                predictions = {"logits": logits,
-                               "probabilities": tf.nn.softmax(
-                                   logits,
-                                   dim=1 if data_format == "channels_first" else -1,
-                                   name="softmax_probabilities"),
-                               "latent": latent,
-                               "input": audio,
-                               "input_length": seq_lengths_original,
-                               "reconstruction": reconstructed}
-                for name, act in encoder_layers + decoder_layers:
-                    predictions[name] = act
-                if use_ctc:
-                    decoded = decode(logits_tm, seq_lengths, top_paths=100,
-                                     pad_val=-1)
-                    predictions["decoding"] = decoded
-            else:
-                predictions = {"latent": joint,
-                               "reconstruction": reconstructed}
+            predictions = {"logits": logits,
+                           "probabilities": tf.nn.softmax(
+                               logits,
+                               dim=1 if data_format == "channels_first" else -1,
+                               name="softmax_probabilities"),
+                           "latent": latent,
+                           "input": audio,
+                           "input_length": seq_lengths_original,
+                           "reconstruction": reconstructed}
+            for name, act in encoder_layers + decoder_layers:
+                predictions[name] = act
+            if use_ctc:
+                decoded = decode(logits_tm, seq_lengths, top_paths=100,
+                                 pad_val=-1)
+                predictions["decoding"] = decoded
 
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
