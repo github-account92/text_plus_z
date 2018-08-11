@@ -207,8 +207,8 @@ def w2l_model_fn(features, labels, mode, params, config):
             if reg_coeff:
                 if data_format == "channels_last":
                     latent = tf.transpose(latent, [0, 2, 1])
-                reg_loss = feature_map_global_variance_regularizer(
-                    latent, mask_latent)
+                reg_loss = feature_map_local_variance_regularizer(
+                    latent, "cos", mask_latent)
                 tf.summary.scalar("reg_loss", reg_loss)
                 total_loss += reg_coeff * reg_loss
 
