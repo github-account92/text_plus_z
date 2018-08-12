@@ -57,6 +57,9 @@ parser.add_argument("-n", "--bottleneck",
                          "dimensions reserved just for reconstruction, and "
                          "that these are *not* affected by MMD loss if that "
                          "is used!")
+parser.add_argument("-p", "--phase",
+                    action="store_true",
+                    help="If set, keep phase in inputs.")
 parser.add_argument("-r", "--reg",
                     type=float,
                     default=0.,
@@ -161,8 +164,8 @@ out = run_asr(mode=args.mode, data_config=args.data_config,
               model_config=args.model_config, model_dir=args.model_dir,
               act=args.act, ae_coeff=args.ae_coeff,
               batchnorm=not args.batchnorm_off, bottleneck=args.bottleneck,
-              data_format=args.data_format, mmd=args.mmd, reg=args.reg,
-              use_ctc=not args.ctc_off,
+              data_format=args.data_format, mmd=args.mmd, phase=args.phase,
+              reg=args.reg, use_ctc=not args.ctc_off,
               adam_params=args.adam_params, batch_size=args.batch_size,
               clipping=args.clipping, fix_lr=args.fix_lr,
               momentum=args.momentum, normalize=args.normalize,

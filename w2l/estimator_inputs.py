@@ -160,8 +160,8 @@ def _pyfunc_load_arrays_map_transcriptions(file_name, trans, vocab, threshold,
 ###############################################################################
 # To go straight from some collection of numpy arrays
 ###############################################################################
-# TODO more options
-def w2l_input_fn_from_container(array_container, only_decode):
+def w2l_input_fn_from_container(array_container, n_freqs, vocab_size,
+                                bottleneck):
     """Build input function from a container with 1D numpy arrays.
 
     Note that this will yield dummy transcriptions containing a single 0.
@@ -177,7 +177,9 @@ def w2l_input_fn_from_container(array_container, only_decode):
                          taken as a latent sample! There always needs to be a
                          second element because I can't be bothered to code
                          this shit atm.
-        only_decode: See above.
+        n_freqs: Frequencies to be expected in data.
+        vocab_size: Duh.
+        bottleneck: Duh.
     Returns:
         get_next op of iterator.
     """
@@ -192,9 +194,10 @@ def w2l_input_fn_from_container(array_container, only_decode):
     with tf.variable_scope("input"):
         data = tf.data.Dataset.from_generator(
             gen, (tf.float32, tf.int32, tf.int32, tf.int32, tf.float32))
-        # TODO don't hardcode these numbers omg
-        data = data.padded_batch(1, ((329, -1), (), (1,), (), (29+15, -1)),
-                                 (0., 0, 0, 0, 0.))
+        data = data.padded_batch(
+            1,
+            ((n_freqs, -1), (), (1,), (), (vocab_size+bottleneck, -1)),
+            (0., 0, 0, 0, 0.))
         data = data.map(pack_inputs_in_dict_cont, num_parallel_calls=3)
 
         # build iterator

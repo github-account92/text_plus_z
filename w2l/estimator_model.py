@@ -51,6 +51,7 @@ def w2l_model_fn(features, labels, mode, params, config):
             ae_coeff: Coefficient for AE loss.
             only_decode: Bool, if set only run the decoder and assume that the
                          inputs are logits + latent space samples.
+            phase: If false, discard the phase in the input (currently hardcoded!)
         config: RunConfig object passed through from Estimator.
         
     Returns:
@@ -73,10 +74,15 @@ def w2l_model_fn(features, labels, mode, params, config):
     use_ctc = params["use_ctc"]
     ae_coeff = params["ae_coeff"]
     only_decode = params["only_decode"]
+    phase = params["phase"]
 
     # construct model input -> output
     audio, seq_lengths = features["audio"], features["length"]
     n_channels = audio.shape.as_list()[1]
+    if not phase:
+        n_channels -= 201  # TODO don't hardcode
+        audio_with_phase = audio
+        audio = audio[:, :n_channels, :]
     if labels is not None:  # predict passes labels=None...
         labels = labels["transcription"]
     if data_format == "channels_last":
@@ -150,6 +156,8 @@ def w2l_model_fn(features, labels, mode, params, config):
                 decoded = decode(logits_tm, seq_lengths, top_paths=100,
                                  pad_val=-1)
                 predictions["decoding"] = decoded
+            if not phase:
+                predictions["audio_with_phase"] = audio_with_phase
 
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
