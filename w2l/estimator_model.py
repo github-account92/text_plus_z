@@ -52,6 +52,8 @@ def w2l_model_fn(features, labels, mode, params, config):
             only_decode: Bool, if set only run the decoder and assume that the
                          inputs are logits + latent space samples.
             phase: If false, discard the phase in the input (currently hardcoded!)
+            topk: Int, if > 0 only keep information on the top k logits at each
+                  time step.
         config: RunConfig object passed through from Estimator.
         
     Returns:
@@ -75,6 +77,7 @@ def w2l_model_fn(features, labels, mode, params, config):
     ae_coeff = params["ae_coeff"]
     only_decode = params["only_decode"]
     phase = params["phase"]
+    topk = params["topk"]
 
     # construct model input -> output
     audio, seq_lengths = features["audio"], features["length"]
@@ -107,13 +110,35 @@ def w2l_model_fn(features, labels, mode, params, config):
             pre_out, bottleneck, 1, 1, 1,
             act=None, batchnorm=False, train=False, data_format=data_format,
             vis=vis, name="latent")
-        joint = tf.concat([logits, latent],
-                          axis=1 if data_format == "channels_first" else 2)
 
-        if only_decode:  # TODO accommodate channels_last
+        if only_decode:
             joint = features["latent"]
-            logits = joint[:, :29, :]
-            latent = joint[:, 29:, :]
+            if data_format == "channels_first":
+                logits = joint[:, :29, :]
+                latent = joint[:, 29:, :]
+            else:
+                logits = joint[:, :, :29]
+                latent = joint[:, :, 29:]
+
+        if topk:
+            if data_format == "channels_first":
+                logits_cl = tf.transpose(logits, [0, 2, 1])
+            else:
+                logits_cl = logits
+            k_vals, k_inds = tf.nn.top_k(logits_cl, k=topk, sorted=False)
+
+            # TODO this might be an inefficient way to get a "k-hot" vector...
+            char_identities = tf.one_hot(k_inds[:, :, 0], depth=vocab_size + 1)
+            for ii in range(1, topk):
+                char_identities += tf.one_hot(k_inds[:, :, ii], depth=vocab_size + 1)
+            if data_format == "channels_first":
+                char_identities = tf.transpose(char_identities, [0, 2, 1])
+            # TODO maybe we need to embed character identities?
+        else:
+            char_identities = logits
+
+        joint = tf.concat([char_identities, latent],
+                          axis=1 if data_format == "channels_first" else 2)
 
         pre_rec, decoder_layers = read_apply_model_config_inverted(
             model_config, joint, act=act, batchnorm=use_bn,
@@ -213,6 +238,8 @@ def w2l_model_fn(features, labels, mode, params, config):
             total_loss += ae_coeff * ae_loss
 
             if reg_coeff:
+                # we assume channels_first in the regularizer and don't need
+                # latent afterwards so we transpose "in place"
                 if data_format == "channels_last":
                     latent = tf.transpose(latent, [0, 2, 1])
                 reg_loss = feature_map_local_variance_regularizer(

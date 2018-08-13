@@ -37,6 +37,11 @@ parser.add_argument("-f", "--data_format",
                     help="Data format. Either 'channels_first' "
                          "(default, recommended for GPU) "
                          "or 'channels_last', recommended for CPU.")
+parser.add_argument("-k", "--topk",
+                    type=int,
+                    default=0,
+                    help="Instead of logits, use identity of top k characters "
+                         "at each time point. Default: 0, just use full logits.")
 parser.add_argument("-m", "--mmd",
                     type=float,
                     default=0.,
@@ -165,7 +170,7 @@ out = run_asr(mode=args.mode, data_config=args.data_config,
               act=args.act, ae_coeff=args.ae_coeff,
               batchnorm=not args.batchnorm_off, bottleneck=args.bottleneck,
               data_format=args.data_format, mmd=args.mmd, phase=args.phase,
-              reg=args.reg, use_ctc=not args.ctc_off,
+              reg=args.reg, use_ctc=not args.ctc_off, topk=args.topk,
               adam_params=args.adam_params, batch_size=args.batch_size,
               clipping=args.clipping, fix_lr=args.fix_lr,
               momentum=args.momentum, normalize=args.normalize,
