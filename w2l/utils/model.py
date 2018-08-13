@@ -52,13 +52,13 @@ def feature_map_local_variance_regularizer(feature_map, diff_norm, mask):
     elif diff_norm == "cos":
         norms = tf.norm(feature_map, axis=1)
         dotprods = tf.reduce_sum(fmaps_l * fmaps_r, axis=1)
-        cos_sim = dotprods / (norms[:, :, -1:] * norms[:, :, 1:])
+        cos_sim = dotprods / (norms[:, :-1] * norms[:, 1:])
         pairwise = -1 * cos_sim
     else:
         raise ValueError("Invalid difference norm specified: {}. "
                          "Valid are 'l1', 'l2', 'linf', "
                          "'cos'.".format(diff_norm))
-    masked = pairwise*mask[:, :-1]
+    masked = pairwise * tf.cast(mask[:, :-1], tf.float32)
     nonzeros = tf.count_nonzero(mask[:, :-1], dtype=tf.float32)
     return tf.reduce_sum(masked) / nonzeros
 
