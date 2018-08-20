@@ -54,6 +54,8 @@ def w2l_model_fn(features, labels, mode, params, config):
             phase: If false, discard the phase in the input (currently hardcoded!)
             topk: Int, if > 0 only keep information on the top k logits at each
                   time step.
+            random: Float, if > 0 use a random encoder. This float represents
+                    the coefficient for the L1 variance regularizer.
         config: RunConfig object passed through from Estimator.
         
     Returns:
@@ -78,6 +80,7 @@ def w2l_model_fn(features, labels, mode, params, config):
     only_decode = params["only_decode"]
     phase = params["phase"]
     topk = params["topk"]
+    random = params["random"]
 
     # construct model input -> output
     audio, seq_lengths = features["audio"], features["length"]
@@ -110,6 +113,13 @@ def w2l_model_fn(features, labels, mode, params, config):
             pre_out, bottleneck, 1, 1, 1,
             act=None, batchnorm=False, train=False, data_format=data_format,
             vis=vis, name="latent")
+        if random:
+            latent_logvar, _ = conv_layer(
+                pre_out, bottleneck, 1, 1, 1,
+                act=None, batchnorm=False, train=False, data_format=data_format,
+                vis=vis, name="latent_logvar")
+            latent_samples = tf.random_normal(tf.shape(latent))
+            latent = latent + latent_samples*tf.sqrt(tf.exp(latent_logvar))
 
         if only_decode:
             joint = features["latent"]
@@ -235,6 +245,12 @@ def w2l_model_fn(features, labels, mode, params, config):
             if mmd:
                 ae_loss += mmd*mmd_loss
             tf.summary.scalar("mmd_loss", mmd_loss)
+
+            if random:
+                var_loss = tf.reduce_mean(tf.abs(latent_logvar))
+                tf.summary.scalar("var_loss", var_loss)
+                ae_loss += random*var_loss
+
             total_loss += ae_coeff * ae_loss
 
             if reg_coeff:

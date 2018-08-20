@@ -31,6 +31,11 @@ parser.add_argument("-c", "--ctc_off",
                     action="store_true",
                     help="Set to not use CTC loss (i.e. only do (variational) "
                          "autoencoder).")
+parser.add_argument("-d", "--random",
+                    type=float,
+                    default=0.,
+                    help="If > 0, use a random decoder. Coefficient is for "
+                         "the variance regularizer.")
 parser.add_argument("-f", "--data_format",
                     default="channels_first",
                     choices=["channels_first", "channels_last"],
@@ -170,7 +175,8 @@ out = run_asr(mode=args.mode, data_config=args.data_config,
               act=args.act, ae_coeff=args.ae_coeff,
               batchnorm=not args.batchnorm_off, bottleneck=args.bottleneck,
               data_format=args.data_format, mmd=args.mmd, phase=args.phase,
-              reg=args.reg, use_ctc=not args.ctc_off, topk=args.topk,
+              random=args.random, reg=args.reg, use_ctc=not args.ctc_off,
+              topk=args.topk,
               adam_params=args.adam_params, batch_size=args.batch_size,
               clipping=args.clipping, fix_lr=args.fix_lr,
               momentum=args.momentum, normalize=args.normalize,
