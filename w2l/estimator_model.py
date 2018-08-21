@@ -56,6 +56,8 @@ def w2l_model_fn(features, labels, mode, params, config):
                   time step.
             random: Float, if > 0 use a random encoder. This float represents
                     the coefficient for the L1 variance regularizer.
+            full_vae: Bool; If set apply VAE stuff to logits as well (i.e. MMD
+                      loss).
         config: RunConfig object passed through from Estimator.
         
     Returns:
@@ -81,6 +83,7 @@ def w2l_model_fn(features, labels, mode, params, config):
     phase = params["phase"]
     topk = params["topk"]
     random = params["random"]
+    full_vae = params["full_vae"]
 
     # construct model input -> output
     audio, seq_lengths = features["audio"], features["length"]
@@ -120,15 +123,22 @@ def w2l_model_fn(features, labels, mode, params, config):
                 vis=vis, name="latent_logvar")
             latent_samples = tf.random_normal(tf.shape(latent))
             latent = latent + latent_samples*tf.sqrt(tf.exp(latent_logvar))
+            if full_vae:
+                logits_logvar, _ = conv_layer(
+                    pre_out, vocab_size + 1, 1, 1, 1,
+                    act=None, batchnorm=False, train=False, data_format=data_format,
+                    vis=vis, name="logits_logvar")
+                logits_samples = tf.random_normal(tf.shape(logits))
+                logits = logits + logits_samples * tf.sqrt(tf.exp(logits_logvar))
 
         if only_decode:
             joint = features["latent"]
             if data_format == "channels_first":
-                logits = joint[:, :29, :]
-                latent = joint[:, 29:, :]
+                logits = joint[:, :(vocab_size+1), :]
+                latent = joint[:, (vocab_size+1):, :]
             else:
-                logits = joint[:, :, :29]
-                latent = joint[:, :, 29:]
+                logits = joint[:, :, :(vocab_size+1)]
+                latent = joint[:, :, (vocab_size+1):]
 
         if topk:
             if data_format == "channels_first":
@@ -224,12 +234,17 @@ def w2l_model_fn(features, labels, mode, params, config):
                                      mask, dtype=tf.float32)))
             tf.summary.scalar("reconstruction_loss", reconstr_loss)
 
-            # TODO random encoder
             with tf.name_scope("mmd"):
                 if data_format == "channels_first":
                     latent_cl = tf.transpose(latent, [0, 2, 1])
                 else:
                     latent_cl = latent
+                if full_vae:
+                    if data_format == "channels_first":
+                        logits_cl = tf.transpose(logits, [0, 2, 1])
+                    else:
+                        logits_cl = logits
+                    latent_cl = tf.concat([logits_cl, latent_cl], axis=-1)
                 # we only take each 20th entry in the time axis as sample
                 # this is to reduce RAM usage but should also reduce
                 # dependencies between the samples (since technically they are
@@ -247,6 +262,10 @@ def w2l_model_fn(features, labels, mode, params, config):
             tf.summary.scalar("mmd_loss", mmd_loss)
 
             if random:
+                if full_vae:
+                    latent_logvar = tf.concat(
+                        [latent_logvar, logits_logvar],
+                        axis=1 if data_format=="channels_first" else -1)
                 var_loss = tf.reduce_mean(tf.abs(latent_logvar))
                 tf.summary.scalar("var_loss", var_loss)
                 ae_loss += random*var_loss

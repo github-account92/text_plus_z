@@ -36,6 +36,10 @@ parser.add_argument("-d", "--random",
                     default=0.,
                     help="If > 0, use a random decoder. Coefficient is for "
                          "the variance regularizer.")
+parser.add_argument("-e", "--full_vae",
+                    action="store_true",
+                    help="Set to also apply MMD and random encoder to the "
+                         "logit part of the latent space.")
 parser.add_argument("-f", "--data_format",
                     default="channels_first",
                     choices=["channels_first", "channels_last"],
@@ -176,7 +180,7 @@ out = run_asr(mode=args.mode, data_config=args.data_config,
               batchnorm=not args.batchnorm_off, bottleneck=args.bottleneck,
               data_format=args.data_format, mmd=args.mmd, phase=args.phase,
               random=args.random, reg=args.reg, use_ctc=not args.ctc_off,
-              topk=args.topk,
+              topk=args.topk, full_vae=args.full_vae,
               adam_params=args.adam_params, batch_size=args.batch_size,
               clipping=args.clipping, fix_lr=args.fix_lr,
               momentum=args.momentum, normalize=args.normalize,
