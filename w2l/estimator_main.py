@@ -21,6 +21,8 @@ def run_asr(mode, data_config, model_config, model_dir,
     All of these parameters can be passed from w2l_cli. Please check
     that one for docs on what they are.
     The exception is 'container' which is used only in "container mode".
+    Exception #2 is only_decode, which should only ever be used in container
+    model because the other modes don't provide an appropriate input function.
     
     Returns:
         Depends on mode!
@@ -104,11 +106,11 @@ def run_asr(mode, data_config, model_config, model_dir,
             raise ValueError("Container mode requested, but there is nothing "
                              "in the container. Please pass at least a dummy. "
                              "E.g. container = "
-                             "np.zeros(1000, dtype=np.float32).")
+                             "[np.zeros(1000, dtype=np.float32)].")
 
         def input_fn():
             return w2l_input_fn_from_container(
-                container, mel_freqs, len(ch_to_ind), bottleneck)
+                container, mel_freqs, len(ch_to_ind) + 1, bottleneck)
     else:
         def input_fn():
             return w2l_input_fn_npy(
