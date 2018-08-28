@@ -2,7 +2,7 @@ import librosa
 import numpy as np
 
 
-def reconstruct_from_mag_phase(mag, phase, power=False, log=False, mel=False):
+def reconstruct_from_mag_phase(mag, phase):
     """Reconstruct audio from magnitude and phase.
 
     Parameters:
@@ -15,14 +15,6 @@ def reconstruct_from_mag_phase(mag, phase, power=False, log=False, mel=False):
     Returns:
         The reconstructed time domain signal as a 1-dim Numpy array.
     """
-    if mel:
-        mag = mel_to_linear(mag, log=log)
-    elif log:  # if mel, this was done in mel_to_linear already
-        mag = np.exp(mag)
-
-    if power:
-        mag = np.sqrt(mag)
-
     rec = mag * np.exp(1.j * phase)
     rec = librosa.istft(rec, hop_length=160, center=True)
     return rec
@@ -50,7 +42,6 @@ def griffin_lim(mag, iterations, verbose=False):
     len_samples = int((time_slices-1)*160)
     # Initialize the reconstructed signal to noise
     x_reconstruct = np.random.randn(len_samples)
-    print(x_reconstruct.shape, "OOH")
     for ii in range(iterations):
         recon_spectro = librosa.stft(x_reconstruct, n_fft=400, hop_length=160)
         recon_angle = np.angle(recon_spectro)
@@ -60,13 +51,13 @@ def griffin_lim(mag, iterations, verbose=False):
         prev_x = x_reconstruct
         x_reconstruct = librosa.istft(proposal_spectrogram, hop_length=160)
         diff = np.sqrt(np.sum((x_reconstruct - prev_x)**2)/x_reconstruct.size)
-        if verbose:
+        if verbose or not (ii + 1) % 100:
             print('Reconstruction iteration: {}/{} RMSE: {} '.format(
                 ii+1, iterations, diff))
     return x_reconstruct
 
 
-def mel_to_linear(mel, log=False):
+def mel_to_linear(mel, log=False, power=False):
     """Approximately invert a mel spectrogram to linear frequency bins.
 
     Parameters:
@@ -80,4 +71,8 @@ def mel_to_linear(mel, log=False):
         mel = np.exp(mel)
 
     mel_basis = librosa.filters.mel(sr=16000, n_fft=400, n_mels=mel.shape[0])
-    return np.dot(mel_basis.T, mel)
+    linear = np.dot(mel_basis.T, mel)
+
+    if power:
+        linear = np.sqrt(linear)
+    return linear
