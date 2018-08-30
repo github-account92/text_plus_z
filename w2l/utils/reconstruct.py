@@ -8,9 +8,6 @@ def reconstruct_from_mag_phase(mag, phase):
     Parameters:
         mag: 2D magnitude spectrogram, bins x time.
         phase: 2D phase spectrogram bins x time.
-        power: If true, interpret mag as a power spectrogram.
-        log: If true, interpret mag as a log spectrogram.
-        mel: If true, interpret mag as a mel spectrogram.
 
     Returns:
         The reconstructed time domain signal as a 1-dim Numpy array.
@@ -63,6 +60,7 @@ def mel_to_linear(mel, log=False, power=False):
     Parameters:
         mel: The mel spectrogram.
         log: If true, interpret input as log mel spectrogram.
+        power: If true, interpret mag as a power spectrogram.
 
     Returns:
         Linear frequency spectrogram.
