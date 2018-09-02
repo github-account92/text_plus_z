@@ -228,10 +228,26 @@ def w2l_model_fn(features, labels, mode, params, config):
                     mask = mask[:, :, tf.newaxis]
                 # since we don't count errors on padding elements we need to be
                 # careful counting the total number of elements for averaging
-                reconstr_loss = (tf.reduce_sum(
-                    tf.squared_difference(audio, reconstructed) * mask) /
-                                 (n_channels * tf.count_nonzero(
-                                     mask, dtype=tf.float32)))
+                if phase:
+                    mag_audio = audio[:, :128, :]
+                    mag_rec = reconstructed[:, :128, :]
+                    phase_audio = audio[:, 128:, :]
+                    phase_rec = reconstructed[:, :128, :]
+                    reconstr_loss_mag = tf.reduce_sum(
+                        tf.squared_difference(mag_audio, mag_rec) * mask)
+                    phase_diff = phase_audio - phase_rec
+                    #reconstr_loss_phase = tf.reduce_sum(
+                    #    tf.minimum(phase_diff, np.pi-phase_diff)*mask)
+                    reconstr_loss_phase = tf.reduce_sum(
+                        tf.sin(tf.abs(phase_diff))*mask)
+                    reconstr_loss = ((reconstr_loss_mag + reconstr_loss_phase) /
+                                    (n_channels * tf.count_nonzero(
+                                        mask, dtype=tf.float32)))
+                else:
+                    reconstr_loss = (tf.reduce_sum(
+                        tf.squared_difference(audio, reconstructed) * mask) /
+                                     (n_channels * tf.count_nonzero(
+                                         mask, dtype=tf.float32)))
             tf.summary.scalar("reconstruction_loss", reconstr_loss)
 
             with tf.name_scope("mmd"):
