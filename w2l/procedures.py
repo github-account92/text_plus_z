@@ -80,7 +80,7 @@ def speaker_averages(store):
     return average_store
 
 
-def get_mmds(store):
+def get_mmds(store, iters=100, batch_size=10000):
     """Compute MMD for full set as well as for each speaker.
 
     Parameters:
@@ -93,24 +93,41 @@ def get_mmds(store):
     pl_data = tf.placeholder(tf.float32, shape=[None, None])
     pl_prior = tf.placeholder(tf.float32, shape=[None, None])
 
-    # normalize latent data so we can compare it to standard Gaussian
-    data_mean, data_var = tf.nn.moments(pl_data, axes=[0], keep_dims=True)
-    normalized = (pl_data - data_mean) / tf.sqrt(data_var)
-    mmd = compute_mmd(normalized, pl_prior)
+    mmd = compute_mmd(pl_data, pl_prior)
 
     mmd_store = {}
     with tf.Session() as sess:
         for sp in store:
+            print("Doing speaker {}...".format(sp))
             latent_samples = np.concatenate((store[sp][0], store[sp][1]), axis=1)
-            gauss_samples = np.random.randn(*latent_samples.shape).astype(np.float32)
-            mmd_store[sp] = sess.run(
-                mmd, feed_dict={pl_data: latent_samples, pl_prior: gauss_samples})
+            # normalize latent data so we can compare it to standard Gaussian
+            latent_samples = ((latent_samples - np.mean(latent_samples, axis=0, keepdims=True)) /
+                             np.std(latent_samples, axis=0, keepdims=True))
+
+            # to make computation manageable, we repeatedly sample batches from the samples
+            mmd_store[sp] = 0
+            for ii in range(iters):
+                batch_inds = np.random.choice(latent_samples.size[0], size=batch_size, replace=False)
+                latent_batch = latent_samples[batch_inds]
+                gauss_samples = np.random.randn(*latent_batch.shape).astype(np.float32)
+                mmd_store[sp] += sess.run(mmd,
+                                          feed_dict={pl_data: latent_batch,
+                                                     pl_prior: gauss_samples})
+            mmd_store[sp] /= iters
 
         all_logits = np.concatenate([store[sp][0] for sp in store])
         all_latent = np.concatenate([store[sp][1] for sp in store])
         all_latent_samples = np.concatenate((all_logits, all_latent), axis=1)
-        all_gauss_samples = np.random.randn(*all_latent_samples.shape).astype(np.float32)
-        mmd_store["<ALL>"] = sess.run(
-            mmd, feed_dict={pl_data: all_latent_samples, pl_prior: all_gauss_samples})
+        all_latent_samples = ((all_latent_samples - np.mean(all_latent_samples, axis=0, keepdims=True)) /
+                              np.std(all_latent_samples, axis=0, keepdims=True))
+
+        for ii in range(iters):
+            batch_inds = np.random.choice(all_latent_samples.size[0], size=batch_size, replace=False)
+            latent_batch = all_latent_samples[batch_inds]
+            gauss_samples = np.random.randn(*latent_batch.shape).astype(np.float32)
+            mmd_store["<ALL>"] += sess.run(mmd,
+                                           feed_dict={pl_data: latent_batch,
+                                                      pl_prior: gauss_samples})
+        mmd_store["<ALL>"] /= iters
 
     return mmd_store
