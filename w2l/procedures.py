@@ -1,11 +1,13 @@
 import os
 
 import numpy as np
+import tensorflow as tf
 
 from .estimator_main import run_asr
+from .utils.model import compute_mmd
 
 
-def compute_all_latents(path, data_format, *args, **kwargs):
+def compute_all_latents(path, data_format="channels_first", *args, **kwargs):
     """Compute or get all latent representations for the test set.
 
     Parameters:
@@ -36,6 +38,7 @@ def compute_all_latents(path, data_format, *args, **kwargs):
                 store[speaker][1].append(latent)
             if not ind % 500:
                 print("Done with {}...".format(ind))
+        print("Storing...")
         for sp in store:
             store[sp][0] = np.concatenate(store[sp][0], axis=1 if data_format == "channels_first" else 0)
             store[sp][1] = np.concatenate(store[sp][1], axis=1 if data_format == "channels_first" else 0)
@@ -75,3 +78,39 @@ def speaker_averages(store):
         average_store[sp][0] = np.mean(store[sp][0], axis=0)
         average_store[sp][1] = np.mean(store[sp][1], axis=0)
     return average_store
+
+
+def get_mmds(store):
+    """Compute MMD for full set as well as for each speaker.
+
+    Parameters:
+        store: From compute_all_latents.
+
+    Returns:
+        Similar dict containing MMD for each speaker as well as overall MMD
+        in an "<ALL>" key.
+    """
+    pl_data = tf.placeholder(tf.float32, shape=[None, None])
+    pl_prior = tf.placeholder(tf.float32, shape=[None, None])
+
+    # normalize latent data so we can compare it to standard Gaussian
+    data_mean, data_var = tf.nn.moments(pl_data, axes=[0], keep_dims=True)
+    normalized = (pl_data - data_mean) / tf.sqrt(data_var)
+    mmd = compute_mmd(normalized, pl_prior)
+
+    mmd_store = {}
+    with tf.Session() as sess:
+        for sp in store:
+            latent_samples = np.concatenate((store[sp][0], store[sp][1]), axis=1)
+            gauss_samples = np.random.randn(*latent_samples.shape).astype(np.float32)
+            mmd_store[sp] = sess.run(
+                mmd, feed_dict={pl_data: latent_samples, pl_prior: gauss_samples})
+
+        all_logits = np.concatenate([store[sp][0] for sp in store])
+        all_latent = np.concatenate([store[sp][1] for sp in store])
+        all_latent_samples = np.concatenate((all_logits, all_latent), axis=1)
+        all_gauss_samples = np.random.randn(*all_latent_samples.shape).astype(np.float32)
+        mmd_store["<ALL>"] = sess.run(
+            mmd, feed_dict={pl_data: all_latent_samples, pl_prior: all_gauss_samples})
+
+    return mmd_store
