@@ -232,14 +232,14 @@ def w2l_model_fn(features, labels, mode, params, config):
                     mag_audio = audio[:, :128, :]
                     mag_rec = reconstructed[:, :128, :]
                     phase_audio = audio[:, 128:, :]
-                    phase_rec = reconstructed[:, 128:, :]
+                    phase_rec = tf.constant(np.pi, dtype=tf.float32)*tf.nn.tanh(reconstructed[:, 128:, :])
                     reconstr_loss_mag = tf.reduce_sum(
                         tf.squared_difference(mag_audio, mag_rec) * mask)
                     phase_diff = phase_audio - phase_rec
                     #reconstr_loss_phase = tf.reduce_sum(
-                    #    tf.minimum(phase_diff, np.pi-phase_diff)*mask)
+                    #    tf.minimum(phase_diff, 2*np.pi-phase_diff)*mask)
                     reconstr_loss_phase = tf.reduce_sum(
-                        tf.sin(tf.abs(phase_diff))*mask)
+                        tf.sin(tf.abs(phase_diff/2))*mask)
                     reconstr_loss = ((reconstr_loss_mag + reconstr_loss_phase) /
                                     (n_channels * tf.count_nonzero(
                                         mask, dtype=tf.float32)))
