@@ -85,6 +85,8 @@ def get_mmds(store, iters=100, batch_size=10000):
 
     Parameters:
         store: From compute_all_latents.
+        iters: How many iterations to use for estimation.
+        batch_size: How large the batches for each iteration should be.
 
     Returns:
         Similar dict containing MMD for each speaker as well as overall MMD
@@ -107,7 +109,7 @@ def get_mmds(store, iters=100, batch_size=10000):
             # to make computation manageable, we repeatedly sample batches from the samples
             mmd_store[sp] = 0
             for ii in range(iters):
-                batch_inds = np.random.choice(latent_samples.size[0], size=batch_size, replace=False)
+                batch_inds = np.random.choice(latent_samples.shape[0], size=batch_size, replace=False)
                 latent_batch = latent_samples[batch_inds]
                 gauss_samples = np.random.randn(*latent_batch.shape).astype(np.float32)
                 mmd_store[sp] += sess.run(mmd,
@@ -121,8 +123,9 @@ def get_mmds(store, iters=100, batch_size=10000):
         all_latent_samples = ((all_latent_samples - np.mean(all_latent_samples, axis=0, keepdims=True)) /
                               np.std(all_latent_samples, axis=0, keepdims=True))
 
+        mmd_store["<ALL>"] = 0
         for ii in range(iters):
-            batch_inds = np.random.choice(all_latent_samples.size[0], size=batch_size, replace=False)
+            batch_inds = np.random.choice(all_latent_samples.shape[0], size=batch_size, replace=False)
             latent_batch = all_latent_samples[batch_inds]
             gauss_samples = np.random.randn(*latent_batch.shape).astype(np.float32)
             mmd_store["<ALL>"] += sess.run(mmd,
