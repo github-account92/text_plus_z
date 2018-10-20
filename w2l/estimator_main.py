@@ -31,7 +31,6 @@ def run_asr(mode,
             clipping=500,
             fix_lr=False,
             momentum=False,
-            normalize=False,
             steps=500000,
             threshold=0.,
             vis=100,
@@ -136,7 +135,7 @@ def run_asr(mode,
             return w2l_input_fn_npy(
                 csv_path, array_dir, which_sets, train=mode == "train",
                 vocab=ch_to_ind, n_freqs=mel_freqs, batch_size=batch_size,
-                normalize=normalize, threshold=threshold)
+                threshold=threshold)
 
     if mode == "train":
         estimator.train(input_fn=input_fn, steps=steps)

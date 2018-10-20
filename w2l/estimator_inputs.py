@@ -11,7 +11,7 @@ from w2l.utils.rejects import GERMAN_REJECTS
 # Functions based off of log mel spectrograms stored as .npy arrays on disk.
 ###############################################################################
 def w2l_input_fn_npy(csv_path, array_base_path, which_sets, train, vocab,
-                     n_freqs, batch_size, threshold, normalize):
+                     n_freqs, batch_size, threshold):
     """Builds a tf.estimator input function for the preprocessed data.
     
     NOTE: The data on disk is assumed to be stored channels_first.
@@ -39,7 +39,6 @@ def w2l_input_fn_npy(csv_path, array_base_path, which_sets, train, vocab,
         batch_size: How big the batches should be.
         threshold: Float to use for thresholding input arrays.
                    See the _pyfunc further below for some important notes.
-        normalize: Bool; if True, normalize each input array to mean 0, std 1.
     
     Returns:
         get_next op of iterator.
@@ -64,11 +63,10 @@ def w2l_input_fn_npy(csv_path, array_base_path, which_sets, train, vocab,
     print("\tCreating the dataset...")
     ids, _, transcrs = zip(*lines_split)
     files = [os.path.join(array_base_path, fid + ".npy") for fid in ids]
-    # transcrs = [replace_repetitions(transcr) for transcr in transcrs]
 
     def _to_arrays(fname, trans):
         return _pyfunc_load_arrays_map_transcriptions(
-            fname, trans, vocab, threshold, normalize)
+            fname, trans, vocab, threshold)
 
     def gen():  # dummy to be able to use from_generator
         for file_name, transcr in zip(files, transcrs):
@@ -78,6 +76,7 @@ def w2l_input_fn_npy(csv_path, array_base_path, which_sets, train, vocab,
     with tf.variable_scope("input"):
         data = tf.data.Dataset.from_generator(gen, (tf.string, tf.string))
 
+        # TODO try out bucketing
         if train:
             # this basically shuffles the full dataset
             data = data.apply(
@@ -89,12 +88,12 @@ def w2l_input_fn_npy(csv_path, array_base_path, which_sets, train, vocab,
                 _to_arrays, [fid, trans], output_types,
                 stateful=False)),
             num_parallel_calls=3)
-        # NOTE 1: padding value of 0 for element 2 and 4 is just a dummy (since
+        # NOTE 1: padding value of 0 for element 1 and 3 is just a dummy (since
         #         sequence lengths are always scalar)
-        # NOTE 2: changing padding value of -1 for element 3 requires changes
+        # NOTE 2: changing padding value of -1 for element 2 requires changes
         # in the model as well!
         pad_shapes = ((n_freqs, -1), (), (-1,), ())
-        pad_values = (0., 0, -1, 0)
+        pad_values = (np.log(1e-10), 0, -1, 0)
         data = data.padded_batch(
             batch_size, padded_shapes=pad_shapes, padding_values=pad_values)
         data = data.map(pack_inputs_in_dict, num_parallel_calls=3)
@@ -106,12 +105,12 @@ def w2l_input_fn_npy(csv_path, array_base_path, which_sets, train, vocab,
         return iterator.get_next()
 
 
-def _pyfunc_load_arrays_map_transcriptions(file_name, trans, vocab, threshold,
-                                           normalize):
+def _pyfunc_load_arrays_map_transcriptions(file_name, trans, vocab, threshold):
     """Mapping function to go from file names to numpy arrays.
      
     Goes from file_id, transcriptions to a tuple np_array, coded_transcriptions
     (integers).
+    Lengths are returned as well so they are known after padded batching.
     NOTE: Files are assumed to be stored channels_first. If this is not the
           case, this will cause trouble down the line!!
 
@@ -132,14 +131,14 @@ def _pyfunc_load_arrays_map_transcriptions(file_name, trans, vocab, threshold,
                    essentially on its own scale (one that results in mean 0 and
                    std 1, or whatever normalization was used) so a single
                    threshold value isn't really applicable.
-        normalize: Bool; if True, normalize the array to mean 0, std 1.
     
     Returns:
-        Tuple of 2D numpy array (n_freqs x seq_len), scalar (seq_len),
-        1D array (label_len)
+        Tuple of 2D numpy array (n_freqs x seq_len), scalar (is seq_len),
+        1D array (label_len), scalar (is label_len)
     """
     array = np.load(file_name.decode("utf-8"))
-    # we make sure arrays are even in the time axis because of reasons...
+    # we make sure arrays are even in the time axis because otherwise there can
+    # be trouble with reconstruction shapes due to strides
     if array.shape[-1] % 2:
         array = np.pad(array, pad_width=((0, 0), (0, 1)), mode="constant")
     length = np.int32(array.shape[-1])
@@ -151,8 +150,6 @@ def _pyfunc_load_arrays_map_transcriptions(file_name, trans, vocab, threshold,
     if threshold:
         clip_val = np.max(array) - threshold
         array = np.maximum(array, clip_val)
-    if normalize:
-        array = (array - np.mean(array)) / np.std(array)
 
     return array.astype(np.float32), length, trans_mapped, trans_length
 
@@ -173,13 +170,13 @@ def w2l_input_fn_from_container(array_container, n_freqs, vocab_size,
                          be yielded. You need to modify this container from
                          outside to process more sequences. Only really
                          suitable for for estimator.predict.
-                         IF only_decode is given the _second_ element will be
-                         taken as a latent sample! There always needs to be a
-                         second element because I can't be bothered to code
-                         this shit atm.
+                         IF only_decode is used in the main code, the _second_
+                         element will be taken as a latent sample! However,
+                         there always needs to be a second element to keep this
+                         code simple. Any further elements are ignored.
         n_freqs: Frequencies to be expected in data.
         vocab_size: Duh.
-        bottleneck: Duh.
+        bottleneck: Size of the non-logit latent space.
     Returns:
         get_next op of iterator.
     """
@@ -188,16 +185,14 @@ def w2l_input_fn_from_container(array_container, n_freqs, vocab_size,
             as_mel = raw_to_mel(
                 array_container[0], 16000, 400, 160, 128,
                 normalize=False, keep_phase=True).astype(np.float32)
-            yield (as_mel, np.int32(as_mel.shape[-1]),
-                   np.zeros(0, dtype=np.int32), np.int32(0), array_container[1])
+            yield (as_mel, np.int32(as_mel.shape[-1]), array_container[1])
 
     with tf.variable_scope("input"):
         data = tf.data.Dataset.from_generator(
-            gen, (tf.float32, tf.int32, tf.int32, tf.int32, tf.float32))
+            gen, (tf.float32, tf.int32, tf.float32))
         data = data.padded_batch(
             1,
-            ((n_freqs, -1), (), (1,), (), (vocab_size+bottleneck, -1)),
-            (0., 0, 0, 0, 0.))
+            ((n_freqs, -1), (), (vocab_size+bottleneck, -1)))
         data = data.map(pack_inputs_in_dict_cont, num_parallel_calls=3)
 
         # build iterator
@@ -215,36 +210,6 @@ def pack_inputs_in_dict(audio, length, trans, trans_length):
             {"transcription": trans, "length": trans_length})
 
 
-def pack_inputs_in_dict_cont(audio, length, trans, trans_length, latent):
+def pack_inputs_in_dict_cont(audio, length, latent):
     """For estimator interface (only allows one input -> pack into dict)."""
-    return ({"audio": audio, "length": length, "latent": latent},
-            {"transcription": trans, "length": trans_length})
-
-
-def replace_repetitions(string):
-    """Probably quite slow..."""
-    new_str = "##"  # <- that better not be in the vocabulary...
-    for char in string:
-        if new_str[-1] == char:
-            new_str = new_str + "2"
-        elif new_str[-1] == "2" and new_str[-2] == char:
-            new_str = new_str[:-1] + "3"
-        else:
-            new_str = new_str + char
-    return new_str[2:]
-
-
-def redo_repetitions(string):
-    """Inverse of the above"""
-    new_str = ""
-    try:
-        for char in string:
-            if char == "2":
-                new_str += new_str[-1]
-            elif char == "3":
-                new_str += 2*new_str[-1]
-            else:
-                new_str += char
-    except IndexError:
-        return "<INVALID>"
-    return new_str
+    return {"audio": audio, "length": length, "latent": latent}
