@@ -1,50 +1,71 @@
+import os
+
 import tensorflow as tf
 
 from .utils.data import (read_data_config, extract_transcriptions_and_speaker,
                          checkpoint_iterator)
 from .utils.errors import letter_error_rate_corpus, word_error_rate_corpus
 from .utils.vocab import parse_vocab
-from .estimator_inputs import (w2l_input_fn_npy, w2l_input_fn_from_container,
-                               redo_repetitions)
+from .estimator_inputs import w2l_input_fn_npy, w2l_input_fn_from_container
 from .estimator_model import w2l_model_fn
 
 
-def run_asr(mode, data_config, model_config, model_dir,
-            act="relu", ae_coeff=0., batchnorm=True, bottleneck=128,
-            data_format="channels_first", mmd=False, phase=False, random=0.,
-            reg=0., use_ctc=True, topk=0, full_vae=False,
-            adam_params=(1e-4, 0.9, 0.9, 1e-8), batch_size=16, clipping=500,
-            fix_lr=False, momentum=False, normalize=False, steps=500000,
-            threshold=0., vis=100, which_sets=None,
-            container=None, only_decode=False):
+def run_asr(mode,
+            data_config,
+            model_config,
+            model_dir,
+            act="relu",
+            ae_coeff=0.,
+            batchnorm=True,
+            bottleneck=128,
+            data_format="channels_first",
+            mmd=False,
+            phase=False,
+            random=0.,
+            reg=0.,
+            use_ctc=True,
+            topk=0,
+            full_vae=False,
+            adam_params=(1e-4, 0.9, 0.9, 1e-8),
+            batch_size=16,
+            clipping=500,
+            fix_lr=False,
+            momentum=False,
+            normalize=False,
+            steps=500000,
+            threshold=0.,
+            vis=100,
+            which_sets=None,
+            container=None,
+            only_decode=False):
     """
-    All of these parameters can be passed from w2l_cli. Please check
-    that one for docs on what they are.
-    The exception is 'container' which is used only in "container mode".
+    All of these parameters can be passed from w2l_cli. Please check that one
+    for docs on what they are.
+    Exception #1 is 'container' which is used only in "container mode".
     Exception #2 is only_decode, which should only ever be used in container
-    model because the other modes don't provide an appropriate input function.
+    mode because the other modes don't provide an appropriate input function.
     
     Returns:
         Depends on mode!
-        If train, eval-current or eval-all: Nothing is returned.
-        If predict: Returns a generator over predictions for the requested set.
-        If return: Return the estimator object. Use this if you want access to
+        train: Nothing is returned.
+        eval-current: Returns the dict with evaluation results.
+        eval-all: Returns a dict mapping checkpoint names to evaluation dicts.
+        predict: Returns a generator over predictions for the requested set.
+        return: Return the estimator object. Use this if you want access to
                    the variables or their values, for example.
-        If container: Returns a generator over predictions for the given
+        container: Returns a generator over predictions for the given
                       container.
     """
-    # TODO refactor
     # Set up, verify arguments etc.
     tf.logging.set_verbosity(tf.logging.INFO)
 
-    # These used to be separate CLAs, but essentially "belong together" so this
-    # results in less cluttered calls to the training script.
     data_config_dict = read_data_config(data_config)
     csv_path, array_dir, vocab_path, mel_freqs = (
         data_config_dict["csv_path"], data_config_dict["array_dir"],
         data_config_dict["vocab_path"], data_config_dict["n_freqs"])
     # if we have phase in the data, the input function needs to know about the
     # additional channels
+    # TODO handle phase properly everywhere
     if data_config_dict["keep_phase"]:
         mel_freqs += data_config_dict["window_size"] // 2 + 1
 
@@ -84,10 +105,9 @@ def run_asr(mode, data_config, model_config, model_dir,
     config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=6,
                                     save_summary_steps=None if vis else 100,
                                     model_dir=model_dir)
-    mutli_gpu_model_fn = tf.contrib.estimator.replicate_model_fn(w2l_model_fn)
-    estimator = tf.estimator.Estimator(model_fn=mutli_gpu_model_fn,
-                                       params=params,
-                                       config=config)
+    multi_gpu_model_fn = tf.contrib.estimator.replicate_model_fn(w2l_model_fn)
+    estimator = tf.estimator.Estimator(model_fn=multi_gpu_model_fn,
+                                       params=params, config=config)
     if mode == "return":
         return estimator
 
@@ -126,77 +146,86 @@ def run_asr(mode, data_config, model_config, model_dir,
         def gen():
             transcriptions, speakers = extract_transcriptions_and_speaker(
                 csv_path, which_sets)
-            for ind, (prediction, true, speaker) in enumerate(
+            for ind, (prediction, transcr, speaker) in enumerate(
                     zip(estimator.predict(input_fn=input_fn),
                         transcriptions, speakers)):
 
                 predictions_repacked = dict()
                 if mode != "container":
-                    predictions_repacked["true"] = true
+                    predictions_repacked["true"] = transcr
                     predictions_repacked["speaker"] = speaker
-                predictions_repacked["input_length"] = prediction["input_length"]
 
                 if use_ctc:
-                    pred = prediction["decoding"]
+                    decoded = prediction["decoding"]
                     # remove padding and convert to chars
-                    pred = [[p for p in candidate if p != -1] for candidate in pred]
-                    pred_ch = ["".join([ind_to_ch[ind] for ind in candidate])
-                               for candidate in pred]
-                    # pred_ch = [redo_repetitions(candidate) for candidate in pred_ch]
-                    predictions_repacked["decoding"] = pred_ch
+                    decoded = [[ind for ind in candidate if ind != -1]
+                               for candidate in decoded]
+                    decoded_char = ["".join([ind_to_ch[ind]
+                                             for ind in candidate])
+                                    for candidate in decoded]
+                    predictions_repacked["decoding"] = decoded_char
 
-                # construct a sorted list of layers and their activations, with
-                # input in front and output (logits) in the back
-                layers = [(n, a) for (n, a) in prediction.items() if
-                          leading_string(n) in ["encoder_layer", "decoder_layer", "block", "dense"]]
-                layers.sort(key=lambda tup: trailing_num(tup[0]))
-                layers.append(("logits", prediction["logits"]))
-                layers.append(("latent", prediction["latent"]))
-                layers.insert(0, ("input", prediction["input"]))
+                # construct a sorted list of layers and their activations
+                # we separate encoder and decoder and also inputs, logits and
+                # latent activations
+                encoder_layers = [(n, a) for (n, a) in prediction.items() if
+                                  leading_string(n) == "encoder_layer"]
+                encoder_layers.sort(key=lambda tup: trailing_num(tup[0]))
+                decoder_layers = [(n, a) for (n, a) in prediction.items() if
+                                  leading_string(n) == "decoder_layer"]
+                decoder_layers.sort(key=lambda tup: trailing_num(tup[0]))
 
-                predictions_repacked["all_layers"] = layers
-                predictions_repacked["reconstruction"] = prediction["reconstruction"]
+                predictions_repacked["encoder_layers"] = encoder_layers
+                predictions_repacked["decoder_layers"] = decoder_layers
+                for key in ["logits", "latent", "input", "reconstruction",
+                            "input_length"]:
+                    predictions_repacked[key] = prediction[key]
                 yield predictions_repacked
 
-    if mode == "predict" or mode == "container":
-        return gen()
+        if mode == "predict" or mode == "container":
+            return gen()
 
-    if mode == "errors":
-        true = []
-        predicted = []
-        for p in gen():
-            true.append(p["true"])
-            predicted.append(p["decoding"][0])
-        ler = letter_error_rate_corpus(true, predicted)
-        wer = word_error_rate_corpus(true, predicted)
-        print("LER: {}\nWER: {}".format(ler, wer))
+        if mode == "errors":
+            # preferable to TF edit distance due to properly weighted averaging
+            true = []
+            predicted = []
+            for p in gen():
+                true.append(p["true"])
+                predicted.append(p["decoding"][0])
+            ler = letter_error_rate_corpus(true, predicted)
+            wer = word_error_rate_corpus(true, predicted)
+            print("LER: {}\nWER: {}".format(ler, wer))
 
-        return ler, wer
+            return ler, wer
 
     elif mode == "eval-all":
+        eval_dicts = dict()
         for ckpt in checkpoint_iterator(model_dir):
             print("Evaluating checkpoint {}...".format(ckpt))
-            eval_results = estimator.evaluate(input_fn=input_fn)
+            eval_results = estimator.evaluate(
+                input_fn=input_fn,
+                checkpoint_path=os.path.join(model_dir, ckpt))
             print("Evaluation results:\n", eval_results)
-        return
+            eval_dicts[ckpt] = eval_results
+        return eval_dicts
 
     elif mode == "eval-current":
         eval_results = estimator.evaluate(input_fn=input_fn)
         print("Evaluation results:\n", eval_results)
-        return
+        return eval_results
 
 
 ###############################################################################
 # Helpers
 ###############################################################################
 def leading_string(string):
-    """Splits e.g. "layer104" into "layer", "104" an returns "layer"."""
+    """Splits e.g. "layer104" into "layer", "104" and returns "layer"."""
     alpha = string.rstrip('0123456789')
     return alpha
 
 
 def trailing_num(string):
-    """Splits e.g. "layer104" into "layer", "104" an returns int("104")."""
+    """Splits e.g. "layer104" into "layer", "104" and returns int("104")."""
     alpha = string.rstrip('0123456789')
     num = string[len(alpha):]
     return int(num)

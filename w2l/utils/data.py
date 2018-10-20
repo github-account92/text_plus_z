@@ -8,8 +8,9 @@ from w2l.utils.rejects import GERMAN_REJECTS
 
 DATA_CONFIG_EXPECTED_ENTRIES = {
     "csv_path", "array_dir", "vocab_path", "data_type", "n_freqs",
-    "window_size", "hop_length", "normalize", "keep_phase"}
-DATA_CONFIG_INT_ENTRIES = {"n_freqs", "window_size", "hop_length"}
+    "window_size", "hop_length", "normalize", "keep_phase" "resample_rate"}
+DATA_CONFIG_INT_ENTRIES = {"n_freqs", "window_size", "hop_length",
+                           "resample_rate"}
 DATA_CONFIG_BOOL_ENTRIES = {"normalize", "keep_phase"}
 
 
@@ -17,11 +18,11 @@ def read_data_config(config_path):
     """Read a config file with information about the data.
     
     The file should be in csv format and contain the following entries:
-        csv_path: Path to a file like corpus.csv on Poseidon.
+        csv_path: Path to a file like corpus.csv.
         array_dir: Path to the directory containing the corresponding numpy
                    arrays.
         vocab_path: Path to a vocabulary file such as one created by vocab.py.
-        data_type: One of 'raw' or 'mel'.
+        data_type: One of 'raw' or 'mel', what kind of data is in the arrays.
         n_freqs: Frequencies (e.g. STFT or mel bins) to be expected in the
                  data. Will lead to problems if this does not match with
                  reality. If data_type is 'raw' this should be 1!
@@ -33,6 +34,7 @@ def read_data_config(config_path):
         normalize: Whether to normalize data in preprocessing. True or False.
         keep_phase: If set, keep the phase angle of the linear spectrogram and
                     append it to the channels.
+        resample_rate: Hz to resample data to. Use 0 to not do any resampling.
         
     Entries can be in any order. Missing or superfluous entries will result in
     a crash. You can add comments via lines starting with '#'.
@@ -74,7 +76,7 @@ def read_data_config(config_path):
 
 
 def extract_transcriptions_and_speaker(csv_path, which_sets):
-    """Return a list of transcriptions and speakers from a corpus csv as strings.
+    """Returns lists of transcriptions and speakers from a corpus csv.
 
     Parameters:
         csv_path: Path to corpus csv that has all the transcriptions.
@@ -99,46 +101,25 @@ def extract_transcriptions_and_speaker(csv_path, which_sets):
 
 
 def checkpoint_iterator(ckpt_folder):
-    # TODO new estimator arguments can probably make this less hacky!
     """Iterates over checkpoints in order and returns them.
-
-    This modifies the "checkpoint meta file" directly which might not be the
-    smartest way to do it.
-    Note that this file yields checkpoint names for convenience, but the main
-    function is actually the modification of the meta file.
 
     Parameters:
         ckpt_folder: Path to folder that has all the checkpoints. Usually the
-                     estimator's model_dir. Also needs to contain a file called
-                     "checkpoint" that acts as the "meta file".
+                     estimator's model_dir.
 
     Yields:
         Paths to checkpoints, in order.
     """
-    # we store the original text to re-write it
-    try:
-        with open(os.path.join(ckpt_folder, "checkpoint")) as ckpt_file:
-            next(ckpt_file)
-            orig = ckpt_file.read()
-    except:  # the file might be empty because reasons...
-        orig = ""
-
-    # get all the checkpoints
-    # we can't rely on the meta file (doesn't store permanent checkpoints :()
-    # so we check the folder instead.
+    # we can't rely on the meta file (doesn't store permanent checkpoints :() so
+    # we check the folder instead.
     ckpts = set()
     for file in os.listdir(ckpt_folder):
         if file.split("-")[0] == "model.ckpt":
             ckpts.add(int(file.split("-")[1].split(".")[0]))
     ckpts = sorted(list(ckpts))
-    ckpts = ["\"model.ckpt-" + str(ckpt) + "\"" for ckpt in ckpts]
+    ckpts = ["model.ckpt-" + str(ckpt) for ckpt in ckpts]
 
-    # fill them in one-by-one and leave
     for ckpt in ckpts:
-        with open(os.path.join(ckpt_folder, "checkpoint"),
-                  mode="w") as ckpt_file:
-            ckpt_file.write("model_checkpoint_path: " + ckpt + "\n")
-            ckpt_file.write(orig)
         yield ckpt
 
 

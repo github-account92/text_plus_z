@@ -25,18 +25,20 @@ def fulfill_config(corpus_path, config_path, resample_rate=None):
         corpus_path: Path to corpus, e.g. /data/LibriSpeech or
         /data/corpora/German.
         config_path: Path to config csv.
-        resample_rate: int. Hz to resample data to, if preprocessing is done.
-                       TODO why is this not in the config lol
     """
     data_config = read_data_config(config_path)
     csv_path, array_dir, vocab_path, data_type = (data_config["csv_path"],
                                                   data_config["array_dir"],
                                                   data_config["vocab_path"],
                                                   data_config["data_type"])
-    n_freqs, window_size, hop_length = (data_config["n_freqs"],
-                                        data_config["window_size"],
-                                        data_config["hop_length"])
+    n_freqs, window_size, hop_length, resample_rate = \
+        (data_config["n_freqs"],
+         data_config["window_size"],
+         data_config["hop_length"],
+         data_config["resample_rate"])
     normalize, keep_phase = data_config["normalize"], data_config["keep_phase"]
+    if resample_rate == 0:
+        resample_rate = None
 
     if not os.path.exists(csv_path):
         print("The requested corpus csv {} does not seem to exist. "
@@ -53,7 +55,7 @@ def fulfill_config(corpus_path, config_path, resample_rate=None):
                                 "seem to exist. Do you want to create it? "
                                 "This could take a very long time. Type y/n "
                                 "(no exits the program):".format(array_dir))
-        if create_data_dir.lower()[0] == "y":
+        if create_data_dir.lower() == "y":
             preprocess_audio(csv_path, corpus_path, array_dir, data_type,
                              n_freqs, window_size, hop_length, normalize,
                              resample_rate, keep_phase)
@@ -66,10 +68,13 @@ def make_corpus_csv(librispeech_path, out_path):
     """Create a csv containing corpus info.
 
     The csv will contain lines as follows:
-        id, transcription, set
+        id, path, transcription, set
             id: File id. Numbers separated by dashes. Speaker-Book-Sequence.
                 Uniquely identifies the origin .flac file, but you will want to
                 combine it with the set to find it quickly.
+            path: Relative path to the file from corpus directory. Superfluous
+                  given set and id, but some functions need the full info so
+                  here it is.
             transcription: The text.
             set: Which subset this came from, e.g. train-clean-360, dev-other.
 
@@ -89,13 +94,13 @@ def make_corpus_csv(librispeech_path, out_path):
                 if not files:  # not a data directory
                     continue
 
-                files = sorted(files)  # puts transcriptions at the end
+                files.sort()  # puts transcriptions at the end
                 transcrs = open(os.path.join(path, files[-1])).readlines()
                 transcrs = [" ".join(t.strip().split()[1:]).lower()
                             for t in transcrs]
                 if len(files[:-1]) != len(transcrs):
-                    raise ValueError("Discrepancy in {}: {} audio files found,"
-                                     " but {} transcriptions (should be the "
+                    raise ValueError("Discrepancy in {}: {} audio files found, "
+                                     "but {} transcriptions (should be the "
                                      "same).".format(
                                         path, len(files[:-1]), len(transcrs)))
 
@@ -107,8 +112,8 @@ def make_corpus_csv(librispeech_path, out_path):
 
 
 def preprocess_audio(csv_path, corpus_path, array_dir, data_type, n_freqs,
-                     window_size, hop_length, normalize, resample_rate=None,
-                     keep_phase=False):
+                     window_size, hop_length, normalize, resample_rate,
+                     keep_phase):
     """Preprocess many audio files with requested parameters.
 
     Parameters:
@@ -118,13 +123,13 @@ def preprocess_audio(csv_path, corpus_path, array_dir, data_type, n_freqs,
         array_dir: Path to directory where all the processed arrays should be
                    stored in.
         data_type: One of 'raw' or 'mel'. Whether to apply mel spectrogram
-                   transformation. If 'raw', n_freqs, window_size and
-                   hop_length are ignored.
+                   transformation. If 'raw', n_freqs, window_size and hop_length
+                   are ignored.
         n_freqs: Number of mel frequencies to use.
         window_size: STFT window size.
         hop_length: STFT hop length.
-        normalize: Whether to normalize data to mean 0, std 1. If not done
-                   here, this can also easily be done on the fly.
+        normalize: Whether to normalize data to mean 0, std 1. If not done here,
+                   this can also easily be done on the fly.
         resample_rate: int. Hz to resample data to. If not given, no resampling
                        is performed and any sample rate != 16000 leads to a
                        crash.
@@ -138,12 +143,11 @@ def preprocess_audio(csv_path, corpus_path, array_dir, data_type, n_freqs,
             path = os.path.join(corpus_path, fpath)
             audio, sr = librosa.load(path, sr=resample_rate)
             if not resample_rate and sr != 16000:
-                raise ValueError("Sampling rate != 16000 found in "
-                                 "{} with no resampling "
-                                 "requested!".format(path))
+                raise ValueError("Sampling rate != 16000 ({}) found in {} with "
+                                 "no resampling requested!".format(sr, path))
             if data_type == "mel":
-                audio = raw_to_mel(audio, sr, window_size, hop_length,
-                                    n_freqs, normalize, keep_phase)
+                audio = raw_to_mel(audio, sr, window_size, hop_length, n_freqs,
+                                   normalize, keep_phase)
             else:  # data_type == "raw"
                 if normalize:
                     audio = (audio - np.mean(audio)) / np.std(audio)
@@ -167,8 +171,8 @@ if __name__ == "__main__":
                         default=None,
                         help="Resample data to requested sampling rate. "
                              "Recommended would be 16000 Hz. By default, no "
-                             "resampling is performed and any data that is "
-                             "not sampled at 16 kHz results in a crash.")
+                             "resampling is performed and any data that is not "
+                             "sampled at 16 kHz results in a crash.")
     args = parser.parse_args()
 
     fulfill_config(args.corpus_path, args.config_path,

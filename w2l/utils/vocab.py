@@ -14,7 +14,6 @@ def make_vocab(csv_path, out_path):
     transcrs = [line[2] for line in lines_split]
 
     char_set = sorted(set("".join(transcrs)))
-    char_set += ["2", "3"]
 
     with open(out_path, mode="w") as vocab_file:
         for ind, char in enumerate(char_set):
