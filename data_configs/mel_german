@@ -10,3 +10,5 @@ n_freqs,128
 window_size,400
 hop_length,160
 normalize,False
+keep_phase,False
+resample_rate,0

@@ -1,3 +1,5 @@
+# config for data that has phase still.
+# since you can just discard the phase, this should be sufficient
 csv_path,/data/corpus_new.csv
 array_dir,/cache/English_phase
 vocab_path,/data/vocab
@@ -7,3 +9,4 @@ window_size,400
 hop_length,160
 normalize,False
 keep_phase,True
+resample_rate,0
