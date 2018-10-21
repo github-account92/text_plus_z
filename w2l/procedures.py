@@ -39,14 +39,15 @@ def compute_all_latents(path, data_format="channels_first", *args, **kwargs):
             if not ind % 500:
                 print("Done with {}...".format(ind))
         print("Storing...")
+        cf = data_format == "channels_first"
         for sp in store:
             store[sp][0] = np.concatenate(
-                store[sp][0], axis=1 if data_format == "channels_first" else 0)
+                store[sp][0], axis=1 if cf else 0)
             store[sp][1] = np.concatenate(
-                store[sp][1], axis=1 if data_format == "channels_first" else 0)
+                store[sp][1], axis=1 if cf else 0)
             # we always store channels_last for convenience
             # this way the different "samples" are in axis 0
-            if data_format == "channels_first":
+            if cf:
                 store[sp][0] = store[sp][0].transpose()
                 store[sp][1] = store[sp][1].transpose()
             np.save(os.path.join(path, sp + "_logits.npy"), store[sp][0])

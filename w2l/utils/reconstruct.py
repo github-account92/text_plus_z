@@ -68,7 +68,7 @@ def mel_to_linear(mel, log=False, power=False, sr=16000, window_size=400):
         log: If true, interpret input as log mel spectrogram.
         power: If true, interpret mag as a power spectrogram.
         sr: Sampling rate of the audio data.
-        Window size used to create the spectrogram.
+        window_size: Window size used to create the spectrogram.
 
     Returns:
         Linear frequency spectrogram.

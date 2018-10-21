@@ -34,7 +34,8 @@ parser.add_argument("-d", "--random",
                     type=float,
                     default=0.,
                     help="If > 0, use a random decoder. Coefficient is for the "
-                         "variance regularizer.")
+                         "variance regularizer, which is weighted relative to "
+                         "the AE loss only (see -m).")
 parser.add_argument("-e", "--full_vae",
                     action="store_true",
                     help="Set to also apply MMD and random encoder to the "
@@ -79,7 +80,8 @@ parser.add_argument("-r", "--reg",
                     default=0.,
                     help="Latent variance regularizer coefficient. Default: "
                          "0.0, meaning no regularization. No effect if "
-                         "autoencoder is not used!")
+                         "autoencoder is not used! As for -m, this weight is "
+                         "relative to the AE loss only.")
 parser.add_argument("-v", "--ae_coeff",
                     type=float,
                     default=0.,
@@ -112,6 +114,11 @@ parser.add_argument("-F", "--fix_lr",
                          "However should you restart training without this "
                          "flag, you will get whatever learning rate the "
                          "decaying process has reached at that time.")
+parser.add_argument("-I", "--verbose_losses",
+                    help="Keep track of 'informative' losses even if they are "
+                         "not part of the cost function. This includes MMD and "
+                         "local/global latent variance (both only if AE is "
+                         "used at all).")
 parser.add_argument("-M", "--momentum",
                     action="store_true",
                     help="Pass this to use plain Gradient Descent with "
@@ -176,13 +183,13 @@ out = run_asr(mode=args.mode,
               batchnorm=not args.batchnorm_off,
               bottleneck=args.bottleneck,
               data_format=args.data_format,
+              full_vae=args.full_vae,
               mmd=args.mmd,
               phase=args.phase,
               random=args.random,
               reg=args.reg,
-              use_ctc=not args.ctc_off,
               topk=args.topk,
-              full_vae=args.full_vae,
+              use_ctc=not args.ctc_off,
               adam_params=args.adam_params,
               batch_size=args.batch_size,
               clipping=args.clipping,
@@ -190,5 +197,6 @@ out = run_asr(mode=args.mode,
               momentum=args.momentum,
               steps=args.steps,
               threshold=args.threshold,
+              verbose_losses=args.verbose_losses,
               vis=args.vis,
               which_sets=which_sets)

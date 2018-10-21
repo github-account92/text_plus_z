@@ -6,7 +6,7 @@ from .utils.layers import (conv_layer, residual_block, dense_block,
                            transposed_conv_layer)
 from .utils.model import (decode, decode_top, dense_to_sparse, lr_annealer,
                           clip_and_step, compute_mmd,
-                          feature_map_global_variance_regularizer,
+                          # feature_map_global_variance_regularizer,
                           feature_map_local_variance_regularizer)
 
 
@@ -18,7 +18,7 @@ def w2l_model_fn(features, labels, mode, params, config):
             audio: batch_size x channels x seq_len tensor of input sequences.
                    Note: Must be channels_first!!
             length: batch_size tensor of sequence lengths for each input.
-        labels: Should be a dict containing string keys:
+        labels: Should be (None for predict or) a dict containing string keys:
             transcription: batch_size x label_len tensor of label indices
                            (standing for letters).
             length: batch_size tensor of sequence lengths for each
@@ -26,10 +26,10 @@ def w2l_model_fn(features, labels, mode, params, config):
         mode: Train, Evaluate or Predict modes from tf.estimator.
         params: Should be a dict with the following string keys:
             model_config: Path to config file to build the model up to the
-                          pre-final layer..
+                          pre-final layer.
             vocab_size: Size of the vocabulary, to get the size for the final
                         layer.
-            act: The activation function, e.g. tf.nn.relu or tf.nn.elu.
+            act: The hidden activation function, e.g. tf.nn.relu or tf.nn.elu.
             use_bn: Bool, whether to use batch normalization.
             data_format: String, channels_first or otherwise assumed to be 
                          channels_last (this is not checked here!!).
@@ -44,19 +44,20 @@ def w2l_model_fn(features, labels, mode, params, config):
                       instead of Adam.
             fix_lr: Bool, if set use the provided learning rate instead of
                     the automatically annealed one.
-            mmd: Coefficient for MMD loss for latent space (Wasserstein VAE
-                 thingy).
-            bottleneck: Size of bottleneck (latent representation).
-            use_ctc: Bool, whether to use CTC loss.
+            mmd: Coefficient for MMD loss for latent space (Wasserstein AE).
+                 0 to disable.
+            bottleneck: Size of bottleneck (style space).
+            use_ctc: Bool, whether to use CTC loss. If False, speech recognition
+                     is not trained.
             ae_coeff: Coefficient for AE loss.
             only_decode: Bool, if set only run the decoder and assume that the
-                         inputs are logits + latent space samples.
-            phase: If false, discard the phase in the input (currently hardcoded!)
+                         inputs are logits + style space samples.
+            phase: If false, discard the phase in the input.
             topk: Int, if > 0 only keep information on the top k logits at each
                   time step.
             random: Float, if > 0 use a random encoder. This float represents
                     the coefficient for the L1 variance regularizer.
-            full_vae: Bool; If set apply VAE stuff to logits as well (i.e. MMD
+            full_vae: Bool; If set apply WAE stuff to logits as well (i.e. MMD
                       loss).
         config: RunConfig object passed through from Estimator.
         
@@ -84,6 +85,9 @@ def w2l_model_fn(features, labels, mode, params, config):
     topk = params["topk"]
     random = params["random"]
     full_vae = params["full_vae"]
+    verbose_losses = params["verbose_losses"]
+
+    cf = data_format == "channels_first"
 
     # construct model input -> output
     audio, seq_lengths = features["audio"], features["length"]
@@ -94,20 +98,17 @@ def w2l_model_fn(features, labels, mode, params, config):
         audio = audio[:, :n_channels, :]
     if labels is not None:  # predict passes labels=None...
         labels = labels["transcription"]
-    if data_format == "channels_last":
+    if not cf:
         audio = tf.transpose(audio, [0, 2, 1])
 
     with tf.variable_scope("model"):
-        audio_normed = tf.layers.batch_normalization(
-            audio, axis=1 if data_format == "channels_first" else -1,
-            training=mode == tf.estimator.ModeKeys.TRAIN, name="input_norm")
-
         pre_out, total_stride, encoder_layers = read_apply_model_config(
-            model_config, audio_normed, act=act, batchnorm=use_bn,
+            model_config, audio, act=act, batchnorm=use_bn,
             train=mode == tf.estimator.ModeKeys.TRAIN, data_format=data_format,
             vis=vis)
 
-        # output size is vocab size + 1 for the extra "trash symbol" in CTC
+        # output size is vocab size + 1 for the blank symbol in CTC
+        # note: train has no effect if batchnorm is disabled
         logits, _ = conv_layer(
             pre_out, vocab_size + 1, 1, 1, 1,
             act=None, batchnorm=False, train=False, data_format=data_format,
@@ -126,14 +127,15 @@ def w2l_model_fn(features, labels, mode, params, config):
             if full_vae:
                 logits_logvar, _ = conv_layer(
                     pre_out, vocab_size + 1, 1, 1, 1,
-                    act=None, batchnorm=False, train=False, data_format=data_format,
-                    vis=vis, name="logits_logvar")
+                    act=None, batchnorm=False, train=False,
+                    data_format=data_format, vis=vis, name="logits_logvar")
                 logits_samples = tf.random_normal(tf.shape(logits))
-                logits = logits + logits_samples * tf.sqrt(tf.exp(logits_logvar))
+                logits = logits + (logits_samples *
+                                   tf.sqrt(tf.exp(logits_logvar)))
 
         if only_decode:
             joint = features["latent"]
-            if data_format == "channels_first":
+            if cf:
                 logits = joint[:, :(vocab_size+1), :]
                 latent = joint[:, (vocab_size+1):, :]
             else:
@@ -141,7 +143,7 @@ def w2l_model_fn(features, labels, mode, params, config):
                 latent = joint[:, :, (vocab_size+1):]
 
         if topk:
-            if data_format == "channels_first":
+            if cf:
                 logits_cl = tf.transpose(logits, [0, 2, 1])
             else:
                 logits_cl = logits
@@ -150,15 +152,15 @@ def w2l_model_fn(features, labels, mode, params, config):
             # TODO this might be an inefficient way to get a "k-hot" vector...
             char_identities = tf.one_hot(k_inds[:, :, 0], depth=vocab_size + 1)
             for ii in range(1, topk):
-                char_identities += tf.one_hot(k_inds[:, :, ii], depth=vocab_size + 1)
-            if data_format == "channels_first":
+                char_identities += tf.one_hot(k_inds[:, :, ii],
+                                              depth=vocab_size + 1)
+            if cf:
                 char_identities = tf.transpose(char_identities, [0, 2, 1])
             # TODO maybe we need to embed character identities?
         else:
             char_identities = logits
 
-        joint = tf.concat([char_identities, latent],
-                          axis=1 if data_format == "channels_first" else 2)
+        joint = tf.concat([char_identities, latent], axis=1 if cf else 2)
 
         pre_rec, decoder_layers = read_apply_model_config_inverted(
             model_config, joint, act=act, batchnorm=use_bn,
@@ -170,26 +172,24 @@ def w2l_model_fn(features, labels, mode, params, config):
             vis=vis, name="reconstructed")
 
     # after this we need logits in shape time x batch_size x vocab_size
-    if data_format == "channels_first":  # bs x v x t -> t x bs x v
-        logits_tm = tf.transpose(logits, [2, 0, 1], name="logits_time_major")
-    else:  # channels last: bs x t x v -> t x bs x v
-        logits_tm = tf.transpose(logits, [1, 0, 2], name="logits_time_major")
+    # bs x v x t -> t x bs x v    if cf, or    bs x t x v -> t x bs x v
+    logits_tm = tf.transpose(logits, perm=[2, 0, 1] if cf else [1, 0, 2],
+                             name="logits_time_major")
 
     # we need the "actual" input length *after* strided convolutions for CTC
-    # TODO the correctness of this needs to be verified
     seq_lengths_original = seq_lengths  # to save them in predictions
     if total_stride > 1:
         seq_lengths = tf.cast(seq_lengths / total_stride, tf.int32)
 
     if mode == tf.estimator.ModeKeys.PREDICT:
         with tf.name_scope("predictions"):
-            # note that "all_layers" does not include the outputs (logits)
             # predictions have to map strings to tensors, so I can't just
-            # add the list -- beware the loss of ordering in dict
+            # add the encoder/decoder layer lists -- these are repackaged in
+            # estimator_main.py
             predictions = {"logits": logits,
                            "probabilities": tf.nn.softmax(
                                logits,
-                               dim=1 if data_format == "channels_first" else -1,
+                               dim=1 if cf else -1,
                                name="softmax_probabilities"),
                            "latent": latent,
                            "input": audio,
@@ -221,82 +221,84 @@ def w2l_model_fn(features, labels, mode, params, config):
             total_loss += ctc_loss
         if ae_coeff:
             with tf.name_scope("reconstruction_loss"):
-                mask = tf.sequence_mask(seq_lengths_original, dtype=tf.float32)
-                if data_format == "channels_first":
-                    mask = mask[:, tf.newaxis, :]
+                mask_inp = tf.sequence_mask(seq_lengths_original,
+                                            dtype=tf.float32)
+                if cf:
+                    mask_inp = mask_inp[:, tf.newaxis, :]
                 else:
-                    mask = mask[:, :, tf.newaxis]
+                    mask_inp = mask_inp[:, :, tf.newaxis]
                 # since we don't count errors on padding elements we need to be
                 # careful counting the total number of elements for averaging
                 if phase:
                     mag_audio = audio[:, :128, :]
                     mag_rec = reconstructed[:, :128, :]
                     phase_audio = audio[:, 128:, :]
-                    phase_rec = tf.constant(np.pi, dtype=tf.float32)*tf.nn.tanh(reconstructed[:, 128:, :])
+                    phase_rec = (tf.constant(np.pi, dtype=tf.float32) *
+                                 tf.nn.tanh(reconstructed[:, 128:, :]))
                     reconstr_loss_mag = tf.reduce_sum(
-                        tf.squared_difference(mag_audio, mag_rec) * mask)
+                        tf.squared_difference(mag_audio, mag_rec) * mask_inp)
                     phase_diff = phase_audio - phase_rec
-                    #reconstr_loss_phase = tf.reduce_sum(
-                    #    tf.minimum(phase_diff, 2*np.pi-phase_diff)*mask)
+                    # reconstr_loss_phase = tf.reduce_sum(
+                    #     tf.minimum(phase_diff, 2*np.pi-phase_diff)*mask_inp)
                     reconstr_loss_phase = tf.reduce_sum(
-                        tf.sin(tf.abs(phase_diff/2))*mask)
+                        tf.sin(tf.abs(phase_diff/2))*mask_inp)
                     reconstr_loss = ((reconstr_loss_mag + reconstr_loss_phase) /
-                                    (n_channels * tf.count_nonzero(
-                                        mask, dtype=tf.float32)))
+                                     (n_channels * tf.count_nonzero(
+                                         mask_inp, dtype=tf.float32)))
                 else:
                     reconstr_loss = (tf.reduce_sum(
-                        tf.squared_difference(audio, reconstructed) * mask) /
+                        tf.squared_difference(audio,
+                                              reconstructed) * mask_inp) /
                                      (n_channels * tf.count_nonzero(
-                                         mask, dtype=tf.float32)))
+                                         mask_inp, dtype=tf.float32)))
             tf.summary.scalar("reconstruction_loss", reconstr_loss)
-
-            with tf.name_scope("mmd"):
-                if data_format == "channels_first":
-                    latent_cl = tf.transpose(latent, [0, 2, 1])
-                else:
-                    latent_cl = latent
-                if full_vae:
-                    if data_format == "channels_first":
-                        logits_cl = tf.transpose(logits, [0, 2, 1])
-                    else:
-                        logits_cl = logits
-                    latent_cl = tf.concat([logits_cl, latent_cl], axis=-1)
-                # we only take each 20th entry in the time axis as sample
-                # this is to reduce RAM usage but should also reduce
-                # dependencies between the samples (since technically they are
-                # assumed to be independent, I believe...)
-                latent_flat = tf.reshape(latent_cl,
-                                         [-1, tf.shape(latent_cl)[-1]])[::20]
-                mask_latent = tf.sequence_mask(seq_lengths)
-                mask_flat = tf.reshape(mask_latent, [-1])[::20]
-                latent_masked = tf.boolean_mask(latent_flat, mask_flat)
-                target_samples = tf.random_normal(tf.shape(latent_masked))
-                mmd_loss = compute_mmd(target_samples, latent_masked)
             ae_loss = reconstr_loss
-            if mmd:
-                ae_loss += mmd*mmd_loss
-            tf.summary.scalar("mmd_loss", mmd_loss)
+
+            if mmd or verbose_losses:
+                with tf.name_scope("mmd"):
+                    if full_vae:
+                        latent_cl = tf.concat([logits, latent],
+                                              axis=1 if cf else -1)
+                    else:
+                        latent_cl = latent
+                    if cf:
+                        latent_cl = tf.transpose(latent_cl, [0, 2, 1])
+                    # we only take each 20th entry in the time axis as sample
+                    # this is to reduce RAM usage but should also reduce
+                    # dependencies between the samples (since technically they
+                    # are assumed to be independent, I believe...)
+                    latent_flat = tf.reshape(
+                        latent_cl, [-1, latent_cl.shape.as_list()[-1]])[::20]
+                    mask_latent = tf.sequence_mask(seq_lengths)
+                    mask_flat = tf.reshape(mask_latent, [-1])[::20]
+                    latent_masked = tf.boolean_mask(latent_flat, mask_flat)
+                    target_samples = tf.random_normal(tf.shape(latent_masked))
+                    mmd_loss = compute_mmd(target_samples, latent_masked)
+                    ae_loss += mmd * mmd_loss
+                tf.summary.scalar("mmd_loss", mmd_loss)
 
             if random:
                 if full_vae:
-                    latent_logvar = tf.concat(
-                        [latent_logvar, logits_logvar],
-                        axis=1 if data_format=="channels_first" else -1)
-                var_loss = tf.reduce_mean(tf.abs(latent_logvar))
-                tf.summary.scalar("var_loss", var_loss)
-                ae_loss += random*var_loss
+                    latent_logvar = tf.concat([latent_logvar, logits_logvar],
+                                              axis=1 if cf else -1)
+                enc_var_loss = tf.reduce_mean(tf.abs(latent_logvar))
+                tf.summary.scalar("enc_var_loss", enc_var_loss)
+                ae_loss += random * enc_var_loss
 
-            total_loss += ae_coeff * ae_loss
-
-            if reg_coeff:
+            if reg_coeff or verbose_losses:
                 # we assume channels_first in the regularizer and don't need
                 # latent afterwards so we transpose "in place"
-                if data_format == "channels_last":
+                if not cf:
                     latent = tf.transpose(latent, [0, 2, 1])
-                reg_loss = feature_map_local_variance_regularizer(
+                latent_var_loss = feature_map_local_variance_regularizer(
                     latent, "cos", mask_latent)
-                tf.summary.scalar("reg_loss", reg_loss)
-                total_loss += reg_coeff * reg_loss
+                tf.summary.scalar("latent_var_loss", latent_var_loss)
+                ae_loss += reg_coeff * latent_var_loss
+
+            total_loss += ae_coeff * ae_loss
+            # TODO option to compute only relevant losses, or additional ones
+            # for visualization
+            # TODO maybe use non-random values for regularizer and logits
 
     if mode == tf.estimator.ModeKeys.TRAIN:
         with tf.variable_scope("optimizer"):
@@ -356,15 +358,23 @@ def w2l_model_fn(features, labels, mode, params, config):
                                           training_hooks=hooks)
 
     # if we made it here, we are in evaluation mode
-    # NOTE that this is only letter error rate; word error rates can be
+    # NOTE that this has only letter error rate; word error rates can be
     # obtained from run_asr in "errors" mode.
+    # errors mode is preferred for LER as well due to proper micro-averaging
     with tf.name_scope("evaluation"):
         eval_metric_ops = {}
         if ae_coeff:
             eval_metric_ops["reconstruction_loss"] = tf.metrics.mean(
                 reconstr_loss, name="reconstruction_eval")
-            eval_metric_ops["mmd_loss"] = tf.metrics.mean(
-                mmd_loss, name="mmd_eval")
+            if mmd or verbose_losses:
+                eval_metric_ops["mmd_loss"] = tf.metrics.mean(
+                    mmd_loss, name="mmd_eval")
+            if reg_coeff or verbose_losses:
+                eval_metric_ops["latent_var_loss"] = tf.metrics.mean(
+                    latent_var_loss, name="latent_var_eval")
+            if random:
+                eval_metric_ops["enc_var_loss"] = tf.metrics.mean(
+                    enc_var_loss, name="enc_var_eval")
         if use_ctc:
             decoded = decode_top(logits_tm, seq_lengths, pad_val=-1,
                                  as_sparse=True)
