@@ -8,7 +8,7 @@ from w2l.utils.rejects import GERMAN_REJECTS
 
 DATA_CONFIG_EXPECTED_ENTRIES = {
     "csv_path", "array_dir", "vocab_path", "data_type", "n_freqs",
-    "window_size", "hop_length", "keep_phase" "resample_rate"}
+    "window_size", "hop_length", "keep_phase", "resample_rate"}
 DATA_CONFIG_INT_ENTRIES = {"n_freqs", "window_size", "hop_length",
                            "resample_rate"}
 DATA_CONFIG_BOOL_ENTRIES = {"keep_phase"}

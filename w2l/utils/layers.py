@@ -102,7 +102,7 @@ def transposed_conv_layer(inputs, n_filters, width_filters, stride_filters,
 
         if batchnorm:
             bn = tf.layers.BatchNormalization(
-                conved, axis=channel_axis, name="batch_norm")
+                axis=channel_axis, name="batch_norm")
             conved = bn.apply(conved, training=train)
             n_pars += sum([np.prod(weight.shape.as_list()) for
                            weight in bn.trainable_weights])

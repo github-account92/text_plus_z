@@ -251,7 +251,7 @@ def lr_annealer(lr, factor, loss_history, global_step):
                 x1 = tf.range(n, dtype=tf.float32, name="x")
                 x2 = tf.ones([n], dtype=tf.float32, name="bias")
                 x = tf.stack((x1, x2), axis=1, name="input")
-                slope_bias = tf.matrix_solve_ls(x, loss_history[tf.newaxis],
+                slope_bias = tf.matrix_solve_ls(x, loss_history[:, tf.newaxis],
                                                 name="solution")
                 slope = slope_bias[0][0]
                 bias = slope_bias[1][0]

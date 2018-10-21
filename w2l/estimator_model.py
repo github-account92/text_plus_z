@@ -436,9 +436,6 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
         config_strings = model_config.readlines()
         parsed_config = [parse_model_config_line(line) for
                          line in config_strings]
-        for l in parsed_config:
-            print(l)
-        input()
 
         for ind, (_type, n_f, w_f, s_f, d_f) in enumerate(parsed_config):
             name = "encoder_" + _type + str(ind)
