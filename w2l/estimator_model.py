@@ -434,20 +434,24 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
         total_stride = 1
         previous = inputs
         config_strings = model_config.readlines()
+        parsed_config = [parse_model_config_line(line) for
+                         line in config_strings]
+        for l in parsed_config:
+            print(l)
+        input()
 
-        for ind, line in enumerate(config_strings):
-            t, n_f, w_f, s_f, d_f = parse_model_config_line(line)
-            name = "encoder_" + t + str(ind)
-            if t == "layer":
+        for ind, (_type, n_f, w_f, s_f, d_f) in enumerate(parsed_config):
+            name = "encoder_" + _type + str(ind)
+            if _type == "layer":
                 previous, pars = conv_layer(
                     previous, n_f, w_f, s_f, d_f, act, batchnorm, train,
                     data_format, vis, name=name)
             # TODO residual/dense blocks ignore some parameters ATM!
-            elif t == "block":
+            elif _type == "block":
                 previous, pars = residual_block(
                     previous, n_f, w_f, s_f, act, batchnorm, train,
                     data_format, vis, name=name)
-            elif t == "dense":
+            elif _type == "dense":
                 previous, pars = dense_block(
                     previous, n_f, w_f, s_f, act, batchnorm, train,
                     data_format, vis, name=name)
@@ -455,7 +459,7 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
                 raise ValueError(
                     "Invalid layer type specified in layer {}! Valid are "
                     "'layer', 'block', 'dense'. You specified "
-                    "{}.".format(ind, t))
+                    "{}.".format(ind, _type))
             all_layers.append((name, previous))
             total_stride *= s_f
             total_pars += pars
@@ -488,44 +492,33 @@ def read_apply_model_config_inverted(config_path, inputs, act, batchnorm,
         activations with their names (tuples name, act).
 
     """
-    # TODO refactor with the above function
     print("Reading, building and applying decoder...")
     total_pars = 0
     all_layers = []
     with open(config_path) as model_config:
-        total_stride = 1
         previous = inputs
         config_strings = model_config.readlines()
+        parsed_config = [parse_model_config_line(line) for
+                         line in config_strings]
 
-        for ind, line in enumerate(reversed(config_strings)):
-            # TODO this sucks lol
-            t, n_f, w_f, s_f, d_f = parse_model_config_line(line)
+        for ind, (_type, n_f, w_f, s_f, d_f) in enumerate(
+                reversed(parsed_config)):
             try:
-                n_f = int(parse_model_config_line(config_strings[ind + 1])[1])
+                n_f = parsed_config[ind - 1][1]
             except:
                 n_f = 256
 
-            name = "decoder_" + t + str(ind)
-            if t == "layer":
+            name = "decoder_" + _type + str(ind)
+            if _type == "layer":
                 previous, pars = transposed_conv_layer(
                     previous, n_f, w_f, s_f, d_f, act, batchnorm, train,
                     data_format, vis, name=name)
-            # TODO residual/dense blocks ignore some parameters ATM!
-            elif t == "block":
-                previous, pars = residual_block(
-                    previous, n_f, w_f, s_f, act, batchnorm, train,
-                    data_format, vis, name=name)
-            elif t == "dense":
-                previous, pars = dense_block(
-                    previous, n_f, w_f, s_f, act, batchnorm, train,
-                    data_format, vis, name=name)
             else:
                 raise ValueError(
-                    "Invalid layer type specified in layer {}! Valid are "
-                    "'layer', 'block', 'dense'. You specified "
-                    "{}.".format(ind, t))
+                    "Invalid layer type specified in layer {}! Only 'layer' is "
+                    "supported for the decoder at this time. You specified "
+                    "{}.".format(ind, _type))
             all_layers.append((name, previous))
-            total_stride *= s_f
             total_pars += pars
     print("Number of model parameters (decoder): {}".format(total_pars))
     return previous, all_layers

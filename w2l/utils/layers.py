@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 
 
@@ -26,28 +27,31 @@ def conv_layer(inputs, n_filters, width_filters, stride_filters, dilation, act,
         Output of the layer and number of parameters.
     """
     channel_axis = 1 if data_format == "channels_first" else -1
-    n_pars = int(inputs.shape[channel_axis]) * n_filters * width_filters
-    if batchnorm:  # add per-filter beta and gamma
-        n_pars += 2 * n_filters
-    print("\tCreating layer {} with {} parameters...".format(name, n_pars))
 
     with tf.variable_scope(name):
-        conv = tf.layers.conv1d(
-            inputs, filters=n_filters, kernel_size=width_filters,
+        conv = tf.layers.Conv1D(
+            filters=n_filters, kernel_size=width_filters,
             strides=stride_filters, dilation_rate=dilation,
             activation=None if batchnorm else act,
             use_bias=not batchnorm, padding="same", data_format=data_format,
             name="conv")
+        conved = conv.apply(inputs)
+        n_pars = sum([np.prod(weight.shape.as_list()) for
+                      weight in conv.trainable_weights])
 
         if batchnorm:
-            conv = tf.layers.batch_normalization(
-                conv, axis=channel_axis, training=train, name="batch_norm")
+            bn = tf.layers.BatchNormalization(
+                axis=channel_axis, name="batch_norm")
+            conved = bn.apply(conved, training=train)
+            n_pars += sum([np.prod(weight.shape.as_list()) for
+                           weight in bn.trainable_weights])
             if act:
-                conv = act(conv)
+                conved = act(conved)
         if vis:
-            tf.summary.histogram("activations_" + name,
-                                 conv)
-        return conv, n_pars
+            tf.summary.histogram("activations_" + name, conved)
+
+        print("\tCreated layer {} with {} parameters...".format(name, n_pars))
+        return conved, n_pars
 
 
 def transposed_conv_layer(inputs, n_filters, width_filters, stride_filters,
@@ -76,36 +80,39 @@ def transposed_conv_layer(inputs, n_filters, width_filters, stride_filters,
         Output of the layer and number of parameters.
     """
     channel_axis = 1 if data_format == "channels_first" else -1
-    n_pars = int(inputs.shape[channel_axis]) * n_filters * width_filters
-    if batchnorm:  # add per-filter beta and gamma
-        n_pars += 2 * n_filters
-    print("\tCreating layer {} with {} parameters...".format(name, n_pars))
 
     with tf.variable_scope(name):
-        # for some godforsaken reason there is no 1d transposed conv layer??
+        # for some reason there is no 1d transposed conv layer
         # b x c x t -> b x c x t x 1
         # b x t x c -> b x t x 1 x c
         inp_2d = tf.expand_dims(
             inputs, axis=3 if data_format == "channels_first" else 2)
-        conv = tf.layers.conv2d_transpose(
-            inp_2d, filters=n_filters, kernel_size=(width_filters, 1),
+        conv = tf.layers.Conv2DTranspose(
+            filters=n_filters, kernel_size=(width_filters, 1),
             strides=(stride_filters, 1), activation=None if batchnorm else act,
             use_bias=not batchnorm, padding="same", data_format=data_format,
             name="conv")
+        conved = conv.apply(inp_2d)
         if data_format == "channels_first":
-            conv = tf.squeeze(conv, axis=3)
+            conved = tf.squeeze(conved, axis=3)
         else:
-            conv = tf.squeeze(conv, axis=2)
+            conved = tf.squeeze(conved, axis=2)
+        n_pars = sum([np.prod(weight.shape.as_list()) for
+                      weight in conv.trainable_weights])
 
         if batchnorm:
-            conv = tf.layers.batch_normalization(
-                conv, axis=channel_axis, training=train, name="batch_norm")
+            bn = tf.layers.BatchNormalization(
+                conved, axis=channel_axis, name="batch_norm")
+            conved = bn.apply(conved, training=train)
+            n_pars += sum([np.prod(weight.shape.as_list()) for
+                           weight in bn.trainable_weights])
             if act:
-                conv = act(conv)
+                conved = act(conved)
         if vis:
-            tf.summary.histogram("activations_" + name,
-                                 conv)
-        return conv, n_pars
+            tf.summary.histogram("activations_" + name, conved)
+
+        print("\tCreated layer {} with {} parameters...".format(name, n_pars))
+        return conved, n_pars
 
 
 def gated_conv_layer(inputs, n_filters, width_filters, stride_filters,
