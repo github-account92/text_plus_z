@@ -92,7 +92,7 @@ parser.add_argument("-A", "--adam_params",
                     nargs=4,
                     type=float,
                     default=[1e-4, 0.9, 0.9, 1e-8],
-                    metavar=["adam_lr", "adam_beta1", "adam_beta2" "adam_eps"],
+                    metavar=["adam_lr", "adam_beta1", "adam_beta2", "adam_eps"],
                     help="Learning rate, beta1 and beta2 and epsilon for Adam. "
                          "Defaults: 1e-4, 0.9, 0.9, 1e-8.")
 parser.add_argument("-B", "--batch_size",

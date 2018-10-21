@@ -498,9 +498,9 @@ def read_apply_model_config_inverted(config_path, inputs, act, batchnorm,
 
         for ind, (_type, n_f, w_f, s_f, d_f) in enumerate(
                 reversed(parsed_config)):
-            try:
+            if ind > 0:
                 n_f = parsed_config[ind - 1][1]
-            except:
+            else:
                 n_f = 256
 
             name = "decoder_" + _type + str(ind)
