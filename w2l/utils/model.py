@@ -306,3 +306,25 @@ def compute_mmd(x, y, sigma_sqr=1.0):
     y_kernel = compute_kernel(y, y, sigma_sqr)
     xy_kernel = compute_kernel(x, y, sigma_sqr)
     return tf.reduce_mean(x_kernel + y_kernel - 2 * xy_kernel)
+
+
+def leaky_random(vec_size, n_samples, std=1, diffusion=0.9):
+    """Return a leaky sequence of random Gaussian vectors.
+
+    Note that this tends to converge to 0, especially for large diffusion
+    values.
+
+    Parameters:
+        vec_size: Size of each sample.
+        n_samples: How many samples to take.
+        std: Standard deviation for the Gaussian distribution
+        diffusion: The 'retention factor' of the leakage.
+
+    Returns:
+        vec_size x n_samples matrix (i.e. channels_first)
+    """
+    samples = [std*np.random.randn(vec_size)]
+    for ii in range(n_samples - 1):
+        samples.append(diffusion*samples[-1] +
+                       (1-diffusion)*std*np.random.randn(vec_size))
+    return np.stack(samples, axis=1)
