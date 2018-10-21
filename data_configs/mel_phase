@@ -7,6 +7,5 @@ data_type,mel
 n_freqs,128
 window_size,400
 hop_length,160
-normalize,False
 keep_phase,True
 resample_rate,0

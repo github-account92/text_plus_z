@@ -184,7 +184,7 @@ def w2l_input_fn_from_container(array_container, n_freqs, vocab_size,
         while True:
             as_mel = raw_to_mel(
                 array_container[0], 16000, 400, 160, 128,
-                normalize=False, keep_phase=True).astype(np.float32)
+                keep_phase=True).astype(np.float32)
             yield (as_mel, np.int32(as_mel.shape[-1]), array_container[1])
 
     with tf.variable_scope("input"):

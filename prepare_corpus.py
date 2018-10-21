@@ -36,7 +36,7 @@ def fulfill_config(corpus_path, config_path, resample_rate=None):
          data_config["window_size"],
          data_config["hop_length"],
          data_config["resample_rate"])
-    normalize, keep_phase = data_config["normalize"], data_config["keep_phase"]
+    keep_phase = data_config["keep_phase"]
     if resample_rate == 0:
         resample_rate = None
 
@@ -57,8 +57,8 @@ def fulfill_config(corpus_path, config_path, resample_rate=None):
                                 "(no exits the program):".format(array_dir))
         if create_data_dir.lower() == "y":
             preprocess_audio(csv_path, corpus_path, array_dir, data_type,
-                             n_freqs, window_size, hop_length, normalize,
-                             resample_rate, keep_phase)
+                             n_freqs, window_size, hop_length, resample_rate,
+                             keep_phase)
         else:
             sys.exit("Data directory does not exist and creation not "
                      "requested.")
@@ -112,8 +112,7 @@ def make_corpus_csv(librispeech_path, out_path):
 
 
 def preprocess_audio(csv_path, corpus_path, array_dir, data_type, n_freqs,
-                     window_size, hop_length, normalize, resample_rate,
-                     keep_phase):
+                     window_size, hop_length, resample_rate, keep_phase):
     """Preprocess many audio files with requested parameters.
 
     Parameters:
@@ -128,8 +127,6 @@ def preprocess_audio(csv_path, corpus_path, array_dir, data_type, n_freqs,
         n_freqs: Number of mel frequencies to use.
         window_size: STFT window size.
         hop_length: STFT hop length.
-        normalize: Whether to normalize data to mean 0, std 1. If not done here,
-                   this can also easily be done on the fly.
         resample_rate: int. Hz to resample data to. If not given, no resampling
                        is performed and any sample rate != 16000 leads to a
                        crash.
@@ -147,10 +144,8 @@ def preprocess_audio(csv_path, corpus_path, array_dir, data_type, n_freqs,
                                  "no resampling requested!".format(sr, path))
             if data_type == "mel":
                 audio = raw_to_mel(audio, sr, window_size, hop_length, n_freqs,
-                                   normalize, keep_phase)
+                                   keep_phase)
             else:  # data_type == "raw"
-                if normalize:
-                    audio = (audio - np.mean(audio)) / np.std(audio)
                 audio = audio[np.newaxis, :]  # add channel axis
 
             np.save(os.path.join(array_dir, fid + ".npy"),
