@@ -83,3 +83,9 @@ def mel_to_linear(mel, log=False, power=False, sr=16000, window_size=400):
     if power:
         linear = np.sqrt(linear)
     return linear
+
+
+def normalize(audio):
+    """Normalize an array to an absolute maximum of 1."""
+    absmax = np.abs(audio).max()
+    return audio / absmax
