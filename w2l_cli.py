@@ -115,6 +115,7 @@ parser.add_argument("-F", "--fix_lr",
                          "flag, you will get whatever learning rate the "
                          "decaying process has reached at that time.")
 parser.add_argument("-I", "--verbose_losses",
+                    action="store_true",
                     help="Keep track of 'informative' losses even if they are "
                          "not part of the cost function. This includes MMD and "
                          "local/global latent variance (both only if AE is "

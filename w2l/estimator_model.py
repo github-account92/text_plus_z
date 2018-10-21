@@ -165,11 +165,11 @@ def w2l_model_fn(features, labels, mode, params, config):
         pre_rec, decoder_layers = read_apply_model_config_inverted(
             model_config, joint, act=act, batchnorm=use_bn,
             train=mode == tf.estimator.ModeKeys.TRAIN, data_format=data_format,
-            vis=vis)
+            vis=vis and ae_coeff)
         reconstructed, _ = transposed_conv_layer(
             pre_rec, n_channels, 1, 1, 1,
             act=None, batchnorm=False, train=False, data_format=data_format,
-            vis=vis, name="reconstructed")
+            vis=vis and ae_coeff, name="reconstructed")
 
     # after this we need logits in shape time x batch_size x vocab_size
     # bs x v x t -> t x bs x v    if cf, or    bs x t x v -> t x bs x v
@@ -296,8 +296,6 @@ def w2l_model_fn(features, labels, mode, params, config):
                 ae_loss += reg_coeff * latent_var_loss
 
             total_loss += ae_coeff * ae_loss
-            # TODO option to compute only relevant losses, or additional ones
-            # for visualization
             # TODO maybe use non-random values for regularizer and logits
 
     if mode == tf.estimator.ModeKeys.TRAIN:

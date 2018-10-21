@@ -93,7 +93,7 @@ def w2l_input_fn_npy(csv_path, array_base_path, which_sets, train, vocab,
         # NOTE 2: changing padding value of -1 for element 2 requires changes
         # in the model as well!
         pad_shapes = ((n_freqs, -1), (), (-1,), ())
-        pad_values = (np.log(1e-10), 0, -1, 0)
+        pad_values = (np.log(1e-10).astype(np.float32), 0, -1, 0)
         data = data.padded_batch(
             batch_size, padded_shapes=pad_shapes, padding_values=pad_values)
         data = data.map(pack_inputs_in_dict, num_parallel_calls=3)

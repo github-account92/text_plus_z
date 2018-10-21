@@ -51,6 +51,10 @@ def conv_layer(inputs, n_filters, width_filters, stride_filters, dilation, act,
             tf.summary.histogram("activations_" + name, conved)
 
         print("\tCreated layer {} with {} parameters...".format(name, n_pars))
+        print("\t\tChannels: {} Filters: {} Width: {} Stride: {}, "
+              "Dilation: {}".format(
+                  inputs.shape.as_list()[channel_axis], n_filters,
+                  width_filters, stride_filters, dilation))
         return conved, n_pars
 
 
@@ -112,6 +116,10 @@ def transposed_conv_layer(inputs, n_filters, width_filters, stride_filters,
             tf.summary.histogram("activations_" + name, conved)
 
         print("\tCreated layer {} with {} parameters...".format(name, n_pars))
+        print("\t\tChannels: {} Filters: {} Width: {} Stride: {}, "
+              "Dilation: {}".format(
+                   inputs.shape.as_list()[channel_axis], n_filters,
+                   width_filters, stride_filters, dilation))
         return conved, n_pars
 
 
