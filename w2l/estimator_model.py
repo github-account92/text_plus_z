@@ -498,7 +498,9 @@ def read_apply_model_config_inverted(config_path, inputs, act, batchnorm,
 
         for ind, (_type, n_f, w_f, s_f, d_f) in enumerate(
                 reversed(parsed_config)):
-            if ind > 0:
+            # this is mildly confusing because ind goes UP through the reversed
+            # config but parsed_config itself is not reversed...
+            if ind < len(parsed_config) - 1:
                 n_f = parsed_config[ind - 1][1]
             else:
                 n_f = 256
