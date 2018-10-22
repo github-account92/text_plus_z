@@ -11,7 +11,7 @@ def fig_mel_spec(spectro, sr=16000, hop_length=160, labelsize=18, ticksize=15,
     """Plot a mel spectrogram with reasonable default parameters.
 
     Parameters:
-        spectro: The thing to plot.
+        spectro: 2D spectrogram, frequency x time.
         sr: Sampling rate of the data.
         hop_length: Hop length of the data.
         labelsize: Font size to use for axis labels.
@@ -22,6 +22,32 @@ def fig_mel_spec(spectro, sr=16000, hop_length=160, labelsize=18, ticksize=15,
     """
     librosa.display.specshow(spectro, sr=sr, hop_length=hop_length,
                              x_axis="time", y_axis="mel", fmax=sr//2)
+    plt.tick_params(axis="y", labelsize=ticksize)
+    plt.tick_params(axis="x", labelsize=ticksize)
+    plt.xlabel("Time (seconds)", fontsize=labelsize)
+    plt.ylabel("Frequency (Hz)", fontsize=labelsize)
+    if store:
+        plt.savefig(store, bbox_inches="tight")
+    if show:
+        plt.show()
+
+
+def fig_phase(phase, sr=16000, hop_length=160, labelsize=18, ticksize=15,
+              show=True, store=""):
+    """Plot a phase spectrogram with reasonable default parameters.
+
+    Parameters:
+        phase: 2D phase angle spectrogram, frequency x time.
+        sr: Sampling rate of the data.
+        hop_length: Hop length of the data.
+        labelsize: Font size to use for axis labels.
+        ticksize: Font size to use for tick labels.
+        show: If True, display the plot.
+        store: Path where the figure should be stored. If not given, nothing is
+               stored.
+    """
+    librosa.display.specshow(phase, sr=sr, hop_length=hop_length, x_axis="time",
+                             y_axis="linear", cmap="twilight_shifted")
     plt.tick_params(axis="y", labelsize=ticksize)
     plt.tick_params(axis="x", labelsize=ticksize)
     plt.xlabel("Time (seconds)", fontsize=labelsize)
@@ -49,7 +75,6 @@ def fig_wave(wave, sr=16000, labelsize=18, ticksize=15, show=True, store=""):
     plt.tick_params(axis="x", labelsize=ticksize)
     plt.xlabel("Time (seconds)", fontsize=labelsize)
     plt.ylabel("Amplitude", fontsize=labelsize)
-
     if store:
         plt.savefig(store, bbox_inches='tight')
     if show:
@@ -87,13 +112,13 @@ def fig_logits(logits, sr=16000, hop_length=320, labelsize=18, ticksize=15,
     plt.tick_params(axis="y", which="major", length=1, labelsize=ticksize,
                     width=0)
     if store:
-        plt.savefig("", bbox_inches="tight")
+        plt.savefig(store, bbox_inches="tight")
     if show:
         plt.show()
 
 
 def fig_latent(latent, sr=16000, hop_length=320, labelsize=18, ticksize=15,
-               show=True, store="", diverging=False):
+               show=True, store="", diverging=True):
     """Plot the logit space with reasonable default parameters.
 
     Parameters:
@@ -111,7 +136,7 @@ def fig_latent(latent, sr=16000, hop_length=320, labelsize=18, ticksize=15,
     """
     if diverging:
         absmax = np.max(np.abs(latent))
-        kwargs = {"cmap": "coolwarm", "vmin": -absmax, "vmax": absmax}
+        kwargs = {"cmap": "RdBu_r", "vmin": -absmax, "vmax": absmax}
     else:
         kwargs = {"cmap": "magma"}
     librosa.display.specshow(latent, sr=sr, hop_length=hop_length,
@@ -121,6 +146,6 @@ def fig_latent(latent, sr=16000, hop_length=320, labelsize=18, ticksize=15,
     plt.xlabel("Time (seconds)", fontsize=labelsize)
     plt.ylabel("Latent dimension", fontsize=labelsize)
     if store:
-        plt.savefig("", bbox_inches="tight")
+        plt.savefig(store, bbox_inches="tight")
     if show:
         plt.show()
