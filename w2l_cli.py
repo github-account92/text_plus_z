@@ -63,8 +63,8 @@ parser.add_argument("-m", "--mmd",
                          "to CTC (via the -v argument).")
 parser.add_argument("-n", "--bottleneck",
                     type=int,
-                    default=32,
-                    help="Size of bottleneck. Default: 32. Keep in mind that "
+                    default=15,
+                    help="Size of bottleneck. Default: 15. Keep in mind that "
                          "the latent variables will be joined with the logits "
                          "(for English: 29 characters) for the purpose of "
                          "reconstruction. If you turn CTC off, keep in mind "
