@@ -178,8 +178,14 @@ def run_asr(mode,
 
                 predictions_repacked["encoder_layers"] = encoder_layers
                 predictions_repacked["decoder_layers"] = decoder_layers
-                for key in ["logits", "latent", "input", "reconstruction",
-                            "input_length"]:
+
+                other_keys = ["logits", "latent", "input", "reconstruction",
+                            "input_length"]
+                if random:
+                    other_keys += ["latent_means", "latent_logvar"]
+                    if full_vae:
+                        other_keys += ["logits_means", "logits_logvar"]
+                for key in other_keys:
                     predictions_repacked[key] = prediction[key]
                 yield predictions_repacked
 

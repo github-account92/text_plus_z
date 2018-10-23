@@ -109,11 +109,11 @@ def w2l_model_fn(features, labels, mode, params, config):
 
         # output size is vocab size + 1 for the blank symbol in CTC
         # note: train has no effect if batchnorm is disabled
-        logits, _ = conv_layer(
+        logits_means, _ = conv_layer(
             pre_out, vocab_size + 1, 1, 1, 1,
             act=None, batchnorm=False, train=False, data_format=data_format,
             vis=vis, name="logits")
-        latent, _ = conv_layer(
+        latent_means, _ = conv_layer(
             pre_out, bottleneck, 1, 1, 1,
             act=None, batchnorm=False, train=False, data_format=data_format,
             vis=vis, name="latent")
@@ -122,16 +122,22 @@ def w2l_model_fn(features, labels, mode, params, config):
                 pre_out, bottleneck, 1, 1, 1,
                 act=None, batchnorm=False, train=False, data_format=data_format,
                 vis=vis, name="latent_logvar")
-            latent_samples = tf.random_normal(tf.shape(latent))
-            latent = latent + latent_samples*tf.sqrt(tf.exp(latent_logvar))
+            latent_samples = tf.random_normal(tf.shape(latent_means))
+            latent = latent_means + (latent_samples *
+                                     tf.sqrt(tf.exp(latent_logvar)))
             if full_vae:
                 logits_logvar, _ = conv_layer(
                     pre_out, vocab_size + 1, 1, 1, 1,
                     act=None, batchnorm=False, train=False,
                     data_format=data_format, vis=vis, name="logits_logvar")
-                logits_samples = tf.random_normal(tf.shape(logits))
-                logits = logits + (logits_samples *
-                                   tf.sqrt(tf.exp(logits_logvar)))
+                logits_samples = tf.random_normal(tf.shape(logits_means))
+                logits = logits_means + (logits_samples *
+                                         tf.sqrt(tf.exp(logits_logvar)))
+            else:
+                logits = logits_means
+        else:
+            logits = logits_means
+            latent = latent_means
 
         if only_decode:
             joint = features["latent"]
@@ -195,6 +201,13 @@ def w2l_model_fn(features, labels, mode, params, config):
                            "input": audio,
                            "input_length": seq_lengths_original,
                            "reconstruction": reconstructed}
+            if random:
+                predictions["latent_means"] = latent_means
+                predictions["latent_logvar"] = latent_logvar
+                if full_vae:
+                    predictions["logits_means"] = logits_means
+                    predictions["logits_logvar"] = logits_logvar
+
             for name, act in encoder_layers + decoder_layers:
                 predictions[name] = act
             if use_ctc:
