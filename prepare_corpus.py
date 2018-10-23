@@ -6,6 +6,7 @@ import librosa
 import numpy as np
 
 from w2l.utils.data import read_data_config, raw_to_mel
+from w2l.utils.synthetic.files import fulfill_config_synth
 from w2l.utils.vocab import make_vocab
 
 
@@ -161,6 +162,13 @@ if __name__ == "__main__":
                              "/data/corpora/German.")
     parser.add_argument("config_path",
                         help="Path to config csv.")
+    parser.add_argument("-S", "--synthetic",
+                        action="store_true",
+                        help="Set this flag to use synthetic data instead. In "
+                             "this case, corpus_path will be ignored.")
     args = parser.parse_args()
 
-    fulfill_config(args.corpus_path, args.config_path)
+    if args.synthetic:
+        fulfill_config_synth(args.config_path)
+    else:
+        fulfill_config(args.corpus_path, args.config_path)
