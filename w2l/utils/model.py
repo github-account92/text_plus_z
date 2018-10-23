@@ -290,7 +290,7 @@ def compute_kernel(x, y, sigma_sqr):
                         axis=2) / sigma_sqr)
 
 
-def compute_mmd(x, y, sigma_sqr=1.0):
+def compute_mmd(x, y, sigma_sqr=None):
     """Compute MMD between two batches of vectors.
 
     Parameters:

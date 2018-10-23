@@ -209,6 +209,7 @@ def w2l_model_fn(features, labels, mode, params, config):
     with tf.name_scope("loss"):
         total_loss = 0
         if use_ctc:
+            print("Building CTC loss...")
             # ctc wants the labels as a sparse tensor
             # note that labels are NOT time-major, but this is intended
             with tf.name_scope("ctc"):
@@ -220,6 +221,7 @@ def w2l_model_fn(features, labels, mode, params, config):
             tf.summary.scalar("ctc_loss", ctc_loss)
             total_loss += ctc_loss
         if ae_coeff:
+            print("Building reconstruction loss...")
             with tf.name_scope("reconstruction_loss"):
                 mask_inp = tf.sequence_mask(seq_lengths_original,
                                             dtype=tf.float32)
@@ -255,6 +257,7 @@ def w2l_model_fn(features, labels, mode, params, config):
             ae_loss = reconstr_loss
 
             if mmd or verbose_losses:
+                print("Building MMD loss...")
                 with tf.name_scope("mmd"):
                     if full_vae:
                         latent_cl = tf.concat([logits, latent],
@@ -278,6 +281,7 @@ def w2l_model_fn(features, labels, mode, params, config):
                 tf.summary.scalar("mmd_loss", mmd_loss)
 
             if random:
+                print("Building variance loss for random encoder...")
                 if full_vae:
                     latent_logvar = tf.concat([latent_logvar, logits_logvar],
                                               axis=1 if cf else -1)
@@ -286,6 +290,7 @@ def w2l_model_fn(features, labels, mode, params, config):
                 ae_loss += random * enc_var_loss
 
             if reg_coeff or verbose_losses:
+                print("Building latent variance loss...")
                 # we assume channels_first in the regularizer and don't need
                 # latent afterwards so we transpose "in place"
                 if not cf:
@@ -300,6 +305,7 @@ def w2l_model_fn(features, labels, mode, params, config):
 
     if mode == tf.estimator.ModeKeys.TRAIN:
         with tf.variable_scope("optimizer"):
+            print("Building optimizer...")
             loss_history = tf.Variable(np.zeros(20000), trainable=False,
                                        dtype=tf.float32, name="loss_history")
             lr = tf.Variable(adam_args[0], trainable=False, dtype=tf.float32,
@@ -495,13 +501,11 @@ def read_apply_model_config_inverted(config_path, inputs, act, batchnorm,
         config_strings = model_config.readlines()
         parsed_config = [parse_model_config_line(line) for
                          line in config_strings]
+        reversed_config = list(reversed(parsed_config))
 
-        for ind, (_type, n_f, w_f, s_f, d_f) in enumerate(
-                reversed(parsed_config)):
-            # this is mildly confusing because ind goes UP through the reversed
-            # config but parsed_config itself is not reversed...
+        for ind, (_type, n_f, w_f, s_f, d_f) in enumerate(reversed_config):
             if ind < len(parsed_config) - 1:
-                n_f = parsed_config[ind - 1][1]
+                n_f = reversed_config[ind+1][1]
             else:
                 n_f = 256
 
