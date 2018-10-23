@@ -9,7 +9,7 @@ from w2l.utils.data import read_data_config, raw_to_mel
 from w2l.utils.vocab import make_vocab
 
 
-def fulfill_config(corpus_path, config_path, resample_rate=None):
+def fulfill_config(corpus_path, config_path):
     """Check whether the data for a config exists and creates it if not.
 
     This is pretty dumb. It will check for existence of corpus csv, array
@@ -161,14 +161,6 @@ if __name__ == "__main__":
                              "/data/corpora/German.")
     parser.add_argument("config_path",
                         help="Path to config csv.")
-    parser.add_argument("-r", "--resample",
-                        type=int,
-                        default=None,
-                        help="Resample data to requested sampling rate. "
-                             "Recommended would be 16000 Hz. By default, no "
-                             "resampling is performed and any data that is not "
-                             "sampled at 16 kHz results in a crash.")
     args = parser.parse_args()
 
-    fulfill_config(args.corpus_path, args.config_path,
-                   resample_rate=args.resample)
+    fulfill_config(args.corpus_path, args.config_path)
