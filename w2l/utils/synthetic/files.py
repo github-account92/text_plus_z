@@ -71,19 +71,24 @@ def make_corpus_csv(out_path):
 
     corpora = ["s_train", "s_test"]
     examples_per_corpus = [200000, 20000]
+    gen = text_gen(maxlen=5)
+
     with open(out_path, mode="w") as corpus_csv:
         for corpus, samples in zip(corpora, examples_per_corpus):
             print("\tCreating {}...".format(corpus))
 
-            gen = text_gen(maxlen=5)
             for ind in range(samples):
                 transcr = next(gen)
                 fid = "-".join([corpus, corpus, str(ind).zfill(6)])
                 corpus_csv.write(
                     ",".join([fid, "dummy", transcr, corpus]) + "\n")
 
+                if not (ind + 1) % 1000:
+                    print("\t\tCreated {} texts...".format(ind))
+
 
 def synthesize_audio(array_dir, vocab, csv_path):
+    print("Synthesizing audio in {}...".format(array_dir))
     if not os.path.isdir(array_dir):
         os.makedirs(array_dir)
 
@@ -92,5 +97,10 @@ def synthesize_audio(array_dir, vocab, csv_path):
     with open(csv_path) as corpus_csv:
         for n, line in enumerate(corpus_csv, start=1):
             fid, _, transcr, subset = line.strip().split(",")
-            signal = sonify(transcr, freqs, len_means, len_stds, vocab)
+            signal, segmentation = sonify(transcr, freqs, len_means, len_stds,
+                                          vocab)
             np.save(os.path.join(array_dir, fid + ".npy"), signal)
+            np.save(os.path.join(array_dir, fid + "_segment.npy"), segmentation)
+
+            if not n % 1000:
+                print("\tCreated {} signals...".format(n))
