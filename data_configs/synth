@@ -1,7 +1,7 @@
 # config for synthetic data
-csv_path,cache/synth.csv
-array_dir,cache/Synth
-vocab_path,cache/vocab_synth
+csv_path,/cache/synth.csv
+array_dir,/cache/Synth
+vocab_path,/cache/vocab_synth
 n_freqs,20
 # all of these are ignored
 data_type,mel
