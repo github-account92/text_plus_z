@@ -2,6 +2,67 @@ import numpy as np
 import tensorflow as tf
 
 
+def cnn1d_from_config(parsed_config, inputs, act, batchnorm, train, data_format,
+                      vis, transpose=False, prefix=""):
+    """Build 1D convolutional models without pooling like Wav2letter.
+
+    The final layer should *not* be included since it's always the same and
+    depends on the data (i.e. vocabulary size).
+
+    Parameters:
+        parsed_config: Result of parsing a model config file, containing only
+                       the relevant CNN stuff.
+        inputs: 3D inputs to the model (audio).
+        act: Activation function to apply in each layer/block.
+        batchnorm: Bool, whether to use batch normalization.
+        train: Bool or TF placeholder. Fed straight into batch normalization
+               (ignored if that is not used).
+        data_format: channels_first or _last. Assumed that you checked validity
+                     beforehand. I.e. if it's not first, this function simply
+                     assumes that it's last.
+        vis: Bool, whether to add histograms for layer activations.
+        transpose: If true, use transposed convolutions.
+        prefix: String to prepend to all layer names (also creates variable
+                scope).
+    """
+    previous = inputs
+    total_pars = 0
+    all_layers = []
+    total_stride = 1
+
+    with tf.variable_scope(prefix):
+        for ind, (_type, n_f, w_f, s_f, d_f) in enumerate(parsed_config):
+            name = "encoder_" + _type + str(ind)
+            if _type == "layer":
+                if transpose:
+                    previous, pars = transposed_conv_layer(
+                        previous, n_f, w_f, s_f, d_f, act, batchnorm, train,
+                        data_format, vis, name=name)
+                else:
+                    previous, pars = conv_layer(
+                        previous, n_f, w_f, s_f, d_f, act, batchnorm, train,
+                        data_format, vis, name=name)
+            # TODO residual/dense blocks ignore some parameters ATM!
+            elif _type == "block":
+                previous, pars = residual_block(
+                    previous, n_f, w_f, s_f, act, batchnorm, train,
+                    data_format, vis, name=name)
+            elif _type == "dense":
+                previous, pars = dense_block(
+                    previous, n_f, w_f, s_f, act, batchnorm, train,
+                    data_format, vis, name=name)
+            else:
+                raise ValueError(
+                    "Invalid layer type specified in layer {}! Valid are "
+                    "'layer', 'block', 'dense'. You specified "
+                    "{}.".format(ind, _type))
+            all_layers.append((name, previous))
+            total_stride *= s_f
+            total_pars += pars
+
+    return previous, total_stride, all_layers, total_pars
+
+
 def conv_layer(inputs, n_filters, width_filters, stride_filters, dilation, act,
                batchnorm, train, data_format, vis, name):
     """Build and apply a 1D convolutional layer without pooling.

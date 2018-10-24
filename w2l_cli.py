@@ -12,7 +12,8 @@ parser.add_argument("mode",
 parser.add_argument("data_config",
                     help="Path to data config file. See code for details.")
 parser.add_argument("model_config",
-                    help="Path to model config file. See code for details.")
+                    help="Base ath to model config files. See code for"
+                         " details.")
 parser.add_argument("model_dir",
                     help="Path to store checkpoints etc.")
 

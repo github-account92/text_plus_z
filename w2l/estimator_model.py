@@ -2,8 +2,7 @@ import numpy as np
 import tensorflow as tf
 
 from .utils.hooks import SummarySaverHookWithProfile
-from .utils.layers import (conv_layer, residual_block, dense_block,
-                           transposed_conv_layer)
+from .utils.layers import (conv_layer, transposed_conv_layer, cnn1d_from_config)
 from .utils.model import (decode, decode_top, dense_to_sparse, lr_annealer,
                           clip_and_step, compute_mmd,
                           # feature_map_global_variance_regularizer,
@@ -25,8 +24,8 @@ def w2l_model_fn(features, labels, mode, params, config):
                     transcription.
         mode: Train, Evaluate or Predict modes from tf.estimator.
         params: Should be a dict with the following string keys:
-            model_config: Path to config file to build the model up to the
-                          pre-final layer.
+            model_config: Base path to config files to build the encoder/decoder
+                        *excluding* final layers.
             vocab_size: Size of the vocabulary, to get the size for the final
                         layer.
             act: The hidden activation function, e.g. tf.nn.relu or tf.nn.elu.
@@ -103,9 +102,9 @@ def w2l_model_fn(features, labels, mode, params, config):
 
     with tf.variable_scope("model"):
         pre_out, total_stride, encoder_layers = read_apply_model_config(
-            model_config, audio, act=act, batchnorm=use_bn,
+            model_config + "_enc", audio, act=act, batchnorm=use_bn,
             train=mode == tf.estimator.ModeKeys.TRAIN, data_format=data_format,
-            vis=vis)
+            vis=vis, prefix="encoder")
 
         # output size is vocab size + 1 for the blank symbol in CTC
         # note: train has no effect if batchnorm is disabled
@@ -168,10 +167,10 @@ def w2l_model_fn(features, labels, mode, params, config):
 
         joint = tf.concat([char_identities, latent], axis=1 if cf else 2)
 
-        pre_rec, decoder_layers = read_apply_model_config_inverted(
-            model_config, joint, act=act, batchnorm=use_bn,
+        pre_rec, _, decoder_layers = read_apply_model_config(
+            model_config + "_dec", joint, act=act, batchnorm=use_bn,
             train=mode == tf.estimator.ModeKeys.TRAIN, data_format=data_format,
-            vis=vis and ae_coeff)
+            vis=vis and ae_coeff, prefix="decoder")
         reconstructed, _ = transposed_conv_layer(
             pre_rec, n_channels, 1, 1, 1,
             act=None, batchnorm=False, train=False, data_format=data_format,
@@ -409,12 +408,14 @@ def w2l_model_fn(features, labels, mode, params, config):
 # Helper functions for building inference models.
 ###############################################################################
 def read_apply_model_config(config_path, inputs, act, batchnorm, train,
-                            data_format, vis):
+                            data_format, vis, prefix):
     """Read a model config file and apply it to an input.
 
-    A config file is a csv file where each line stands for a layer or a whole
-    residual block. Lines should follow the format:
-    type,n_f,w_f,s_f,d_f
+    A config file is a csv file where the header determines the network type.
+    The header should follow the format: model_type where model type is one of
+    cnn, cnn_t (transposed).
+    After that, each line stands for a layer or a whole residual block. Lines
+    should follow the format: type,n_f,w_f,s_f,d_f
         type: "layer", "block" or "dense", stating whether this is a single
               conv layer, a residual block or a dense block.
         n_f: Number of filters in the layer/block. For dense blocks, this is
@@ -422,10 +423,6 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
         w_f: Width of filters.
         s_f: Convolutional stride of the layer/block.
         d_f: Dilation rate of the layer/block.
-
-    NOTE: This is for 1D convolutional models without pooling like Wav2letter.
-          The final layer should *not* be included since it's always the same
-          and depends on the data (i.e. vocabulary size).
 
     Parameters:
         config_path: Path to the model config file.
@@ -438,104 +435,31 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
                      beforehand. I.e. if it's not first, this function simply
                      assumes that it's last.
         vis: Bool, whether to add histograms for layer activations.
+        prefix: String to prepend to all layer names (also creates variable
+                scope).
 
     Returns:
         Output of the last layer/block, total stride of the network and a list
         of all layer/block activations with their names (tuples name, act).
     """
-    # TODO for resnets/dense nets, return all *layers*, not just blocks
-    print("Reading, building and applying encoder...")
-    total_pars = 0
-    all_layers = []
+    print("Reading, building and applying {}...".format(prefix))
     with open(config_path) as model_config:
-        total_stride = 1
-        previous = inputs
         config_strings = model_config.readlines()
-        parsed_config = [parse_model_config_line(line) for
-                         line in config_strings]
+        model_type = config_strings[0].strip()
+        if model_type.split("_")[0] == "cnn":
+            transpose = model_type == "cnn_t"
+        else:
+            raise ValueError("Invalid model type {} "
+                             "specified.".format(model_type))
 
-        for ind, (_type, n_f, w_f, s_f, d_f) in enumerate(parsed_config):
-            name = "encoder_" + _type + str(ind)
-            if _type == "layer":
-                previous, pars = conv_layer(
-                    previous, n_f, w_f, s_f, d_f, act, batchnorm, train,
-                    data_format, vis, name=name)
-            # TODO residual/dense blocks ignore some parameters ATM!
-            elif _type == "block":
-                previous, pars = residual_block(
-                    previous, n_f, w_f, s_f, act, batchnorm, train,
-                    data_format, vis, name=name)
-            elif _type == "dense":
-                previous, pars = dense_block(
-                    previous, n_f, w_f, s_f, act, batchnorm, train,
-                    data_format, vis, name=name)
-            else:
-                raise ValueError(
-                    "Invalid layer type specified in layer {}! Valid are "
-                    "'layer', 'block', 'dense'. You specified "
-                    "{}.".format(ind, _type))
-            all_layers.append((name, previous))
-            total_stride *= s_f
-            total_pars += pars
+        parsed_config = [parse_model_config_line(line) for
+                         line in config_strings[1:]]
+
+        output, total_stride, all_layers, total_pars = cnn1d_from_config(
+            parsed_config, inputs, act, batchnorm, train, data_format, vis,
+            transpose, prefix)
     print("Number of model parameters (encoder): {}".format(total_pars))
-    return previous, total_stride, all_layers
-
-
-def read_apply_model_config_inverted(config_path, inputs, act, batchnorm,
-                                     train, data_format, vis):
-    """As above, but applies the config in reverse order with transposed
-     convolutions.
-
-     Note: The last layer of the encoder is not applied in transposed fashion.
-           An additional layer is added to get back to the input dimensionality
-
-     Parameters:
-        config_path: Path to the model config file.
-        inputs: 3D inputs to the model (pre-logits layer of "encoder").
-        act: Activation function to apply in each layer/block.
-        batchnorm: Bool, whether to use batch normalization.
-        train: Bool or TF placeholder. Fed straight into batch normalization
-               (ignored if that is not used).
-        data_format: channels_first or _last. Assumed that you checked validity
-                     beforehand. I.e. if it's not first, this function simply
-                     assumes that it's last.
-        vis: Bool, whether to add histograms for layer activations.
-
-    Returns:
-        Output of the last layer/block and a list of all layer/block
-        activations with their names (tuples name, act).
-
-    """
-    print("Reading, building and applying decoder...")
-    total_pars = 0
-    all_layers = []
-    with open(config_path) as model_config:
-        previous = inputs
-        config_strings = model_config.readlines()
-        parsed_config = [parse_model_config_line(line) for
-                         line in config_strings]
-        reversed_config = list(reversed(parsed_config))
-
-        for ind, (_type, n_f, w_f, s_f, d_f) in enumerate(reversed_config):
-            if ind < len(parsed_config) - 1:
-                n_f = reversed_config[ind+1][1]
-            else:
-                n_f = 256
-
-            name = "decoder_" + _type + str(ind)
-            if _type == "layer":
-                previous, pars = transposed_conv_layer(
-                    previous, n_f, w_f, s_f, d_f, act, batchnorm, train,
-                    data_format, vis, name=name)
-            else:
-                raise ValueError(
-                    "Invalid layer type specified in layer {}! Only 'layer' is "
-                    "supported for the decoder at this time. You specified "
-                    "{}.".format(ind, _type))
-            all_layers.append((name, previous))
-            total_pars += pars
-    print("Number of model parameters (decoder): {}".format(total_pars))
-    return previous, all_layers
+    return output, total_stride, all_layers
 
 
 def parse_model_config_line(l):
