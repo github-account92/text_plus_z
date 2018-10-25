@@ -1,13 +1,15 @@
+"""Create and read vocabularies for given text data."""
 import argparse
 
 
 def make_vocab(csv_path, out_path):
     """Create a human-readable character-index mapping for a given corpus.
-    
+
     Parameters:
         csv_path: Path to the corpus csv (see e.g. w2l_inputs for a more
                   detailed description of how this should look).
         out_path: Path to store the vocabulary to.
+
     """
     with open(csv_path, mode="r") as corpus:
         lines_split = [line.strip().split(",") for line in corpus]
@@ -24,13 +26,14 @@ def make_vocab(csv_path, out_path):
 
 def parse_vocab(vocab_path):
     """Turn a human-readable character-index mapping into python dictionaries.
-    
+
     Parameters:
         vocab_path: Path to vocabulary file.
-        
+
     Returns:
-        Python dictionaries mapping character -> index as well as 
+        Python dictionaries mapping character -> index as well as
         index -> character.
+
     """
     def process_line(line):
         ch, ind = line.rstrip().split(",")

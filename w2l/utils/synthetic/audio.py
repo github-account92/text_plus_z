@@ -1,3 +1,4 @@
+"""Create synthetic signals for given synthetic text."""
 import numpy as np
 from scipy.signal import savgol_filter
 
@@ -12,6 +13,10 @@ def make_frequency_table(vocab, channels=20, mean=-3, std=5, seed=1):
         mean: Mean for the random samples.
         std: Standard deviation for the random samples.
         seed: Seed for random numbers.
+
+    Returns:
+        2D numpy table containing frequencies for one character per row.
+
     """
     np.random.seed(seed)
 
@@ -31,6 +36,10 @@ def make_length_params(vocab, minlen=5, maxlen=12, seed=1):
         minlen: Minimum mean length that may be drawn.
         maxlen: Maximum mean length that may be drawn.
         seed: Random seed.
+
+    Return:
+        Two 1D arrays containing means and stds respectively.
+
     """
     np.random.seed(seed)
 
@@ -63,6 +72,7 @@ def sonify(utterance, freq_table, length_means, length_stds, vocab,
 
     Returns:
         Tuple of signal (2d, channels x time) and segmentation (1d, time).
+
     """
     np.random.seed(seed)
 
@@ -93,7 +103,8 @@ def sonify(utterance, freq_table, length_means, length_stds, vocab,
         pron_length = (length_stds[vocab[char]]*np.random.randn() +
                        length_means[vocab[char]])
         pron_length = np.round(pron_length).astype(np.int32)
-        pron = np.tile(freq_table[vocab[char]][:, np.newaxis], [1, pron_length])
+        pron = np.tile(freq_table[vocab[char]][:, np.newaxis],
+                       [1, pron_length])
 
         audio.append(pron)
         segmentation += [vocab[char]] * pron_length

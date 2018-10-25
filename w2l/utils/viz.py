@@ -1,3 +1,4 @@
+"""Visualization wrappers."""
 import string
 
 import librosa
@@ -19,6 +20,7 @@ def fig_mel_spec(spectro, sr=16000, hop_length=160, labelsize=18, ticksize=15,
         show: If True, display the plot.
         store: Path where the figure should be stored. If not given, nothing is
                stored.
+
     """
     librosa.display.specshow(spectro, sr=sr, hop_length=hop_length,
                              x_axis="time", y_axis="mel", fmax=sr//2)
@@ -45,9 +47,11 @@ def fig_phase(phase, sr=16000, hop_length=160, labelsize=18, ticksize=15,
         show: If True, display the plot.
         store: Path where the figure should be stored. If not given, nothing is
                stored.
+
     """
-    librosa.display.specshow(phase, sr=sr, hop_length=hop_length, x_axis="time",
-                             y_axis="linear", cmap="twilight_shifted")
+    librosa.display.specshow(phase, sr=sr, hop_length=hop_length,
+                             x_axis="time", y_axis="linear",
+                             cmap="twilight_shifted")
     plt.tick_params(axis="y", labelsize=ticksize)
     plt.tick_params(axis="x", labelsize=ticksize)
     plt.xlabel("Time (seconds)", fontsize=labelsize)
@@ -69,6 +73,7 @@ def fig_wave(wave, sr=16000, labelsize=18, ticksize=15, show=True, store=""):
         show: If True, display the plot.
         store: Path where the figure should be stored. If not given, nothing is
                stored.
+
     """
     librosa.display.waveplot(wave, sr=sr)
     plt.tick_params(axis="y", labelsize=ticksize)
@@ -95,6 +100,7 @@ def fig_logits(logits, sr=16000, hop_length=320, labelsize=18, ticksize=15,
         show: If True, display the plot.
         store: Path where the figure should be stored. If not given, nothing is
                stored.
+
     """
     librosa.display.specshow(logits, sr=sr, hop_length=hop_length,
                              x_axis="time", cmap="magma")
@@ -133,6 +139,7 @@ def fig_latent(latent, sr=16000, hop_length=320, labelsize=18, ticksize=15,
                stored.
         diverging: If true, use a diverging colormap (coolwarm). Otherwise use
                    a sequential one (magma)
+
     """
     if diverging:
         absmax = np.max(np.abs(latent))

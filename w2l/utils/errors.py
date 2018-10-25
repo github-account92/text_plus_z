@@ -1,3 +1,4 @@
+"""Proper computation of word/letter error rates."""
 import editdistance
 
 
@@ -19,8 +20,8 @@ def word_error_rate_corpus(targets, predictions):
     """Compare to lists of strings to get the average word error rate.
 
     WER is computed as the Levenshtein distance between the true and predicted
-    string, with words being used as 'atomic" units, i.e. the string is split at
-    whitespace Results are micro-averaged.
+    string, with words being used as 'atomic" units, i.e. the string is split
+    at whitespace Results are micro-averaged.
     """
     word_targets = [true.split() for true in targets]
     word_predictions = [predicted.split() for predicted in predictions]

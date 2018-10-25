@@ -1,9 +1,13 @@
+"""Custom layers/wrappers."""
 import numpy as np
 import tensorflow as tf
 
 
-def cnn1d_from_config(parsed_config, inputs, act, batchnorm, train, data_format,
-                      vis, transpose=False, prefix=""):
+###############################################################################
+# CNNs
+###############################################################################
+def cnn1d_from_config(parsed_config, inputs, act, batchnorm, train,
+                      data_format, vis, transpose=False, prefix=""):
     """Build 1D convolutional models without pooling like Wav2letter.
 
     The final layer should *not* be included since it's always the same and
@@ -24,6 +28,13 @@ def cnn1d_from_config(parsed_config, inputs, act, batchnorm, train, data_format,
         transpose: If true, use transposed convolutions.
         prefix: String to prepend to all layer names (also creates variable
                 scope).
+
+    Returns:
+        The final output.
+        The total stride of the network (downsampling).
+        A list of tuples (layer_name, activation).
+        Number of parameters.
+
     """
     previous = inputs
     total_pars = 0
@@ -32,7 +43,7 @@ def cnn1d_from_config(parsed_config, inputs, act, batchnorm, train, data_format,
 
     with tf.variable_scope(prefix):
         for ind, (_type, n_f, w_f, s_f, d_f) in enumerate(parsed_config):
-            name = "encoder_" + _type + str(ind)
+            name = _type + str(ind)
             if _type == "layer":
                 if transpose:
                     previous, pars = transposed_conv_layer(
@@ -56,7 +67,7 @@ def cnn1d_from_config(parsed_config, inputs, act, batchnorm, train, data_format,
                     "Invalid layer type specified in layer {}! Valid are "
                     "'layer', 'block', 'dense'. You specified "
                     "{}.".format(ind, _type))
-            all_layers.append((name, previous))
+            all_layers.append((prefix + "_" + name, previous))
             total_stride *= s_f
             total_pars += pars
 
@@ -86,6 +97,7 @@ def conv_layer(inputs, n_filters, width_filters, stride_filters, dilation, act,
 
     Returns:
         Output of the layer and number of parameters.
+
     """
     channel_axis = 1 if data_format == "channels_first" else -1
 
@@ -143,6 +155,7 @@ def transposed_conv_layer(inputs, n_filters, width_filters, stride_filters,
 
     Returns:
         Output of the layer and number of parameters.
+
     """
     channel_axis = 1 if data_format == "channels_first" else -1
 
@@ -189,7 +202,8 @@ def gated_conv_layer(inputs, n_filters, width_filters, stride_filters,
     """Build a GatedConv layer.
 
     Basically two parallel convolutions, one with linear activation and one
-    with sigmoid."""
+    with sigmoid.
+    """
     with tf.variable_scope(name):
         out_conv, pars1 = conv_layer(
             inputs, n_filters, width_filters, stride_filters, None, batchnorm,
@@ -202,7 +216,7 @@ def gated_conv_layer(inputs, n_filters, width_filters, stride_filters,
 
 def residual_block(inputs, n_filters, width_filters, stride_filters, act,
                    batchnorm, train, data_format, vis, name):
-    """Simple residual block variation.
+    """Build a simple residual block.
 
     No projection implemented! This means the inputs need to have the same
     dimensionality as the outputs of this layer. So: Number of filters needs
@@ -214,6 +228,7 @@ def residual_block(inputs, n_filters, width_filters, stride_filters, act,
 
     Returns:
         Output of the block and number of parameters.
+
     """
     # TODO either allow projections or raise in case of incompatible filters
     print("\tCreating residual block {}...".format(name))
@@ -237,7 +252,8 @@ def residual_block(inputs, n_filters, width_filters, stride_filters, act,
 ###############################################################################
 def dense_block(inputs, n_filters, width_filters, stride_filters, act,
                 batchnorm, train, data_format, vis, name):
-    """For building DenseNets. Not finished!!"""
+    """For building DenseNets."""
+    # not finished!!
     print("\tCreating dense block {}...".format(name))
     if stride_filters > 1:
         raise ValueError("Strides != 1 currently not allowed for dense "
@@ -272,6 +288,7 @@ def residual_block_new(inputs, n_filters, width_filters, stride_filters, act,
 
     Returns:
         Output of the block.
+
     """
     def shifted_conv_layer(_inputs, _n_filters, _width_filters,
                            _stride_filters, _act, _batchnorm, _train,
@@ -307,3 +324,47 @@ def residual_block_new(inputs, n_filters, width_filters, stride_filters, act,
                                    stride_filters, None, batchnorm, train,
                                    data_format, vis, "conv2")
         return conv2 + inputs
+
+
+###############################################################################
+# RNNs
+###############################################################################
+def rnn_from_config(parsed_config, inputs, data_format, vis, prefix):
+    """Build an RNN model.
+
+    The final layer should *not* be included since it's always the same and
+    depends on the data (i.e. vocabulary size).
+
+    Parameters:
+        parsed_config: Result of parsing a model config file, containing only
+                       the relevant RNN stuff.
+        inputs: 3D inputs to the model (audio).
+        data_format: channels_first or _last. Assumed that you checked validity
+                     beforehand. I.e. if it's not first, this function simply
+                     assumes that it's last.
+        vis: Bool, whether to add histograms for layer activations.
+        prefix: String to prepend to all layer names (also creates variable
+                scope).
+
+    Returns:
+        The final output.
+        The total stride of the network (downsampling).
+        A list of tuples (layer_name, activation).
+        Number of parameters (dummy atm).
+
+    """
+    with tf.variable_scope(prefix):
+        cells = []
+        for ind, (layer_size,) in parsed_config:
+            cells.append(tf.nn.rnn_cell.LSTMCell(
+                layer_size, use_peepholes=True, name="lstm_" + str(ind)))
+        multi_cell = tf.nn.rnn_cell.MultiRNNCell(cells)
+
+        if data_format == "channels_first":
+            inputs = tf.transpose(inputs, [0, 2, 1])
+        output, _ = tf.nn.dynamic_rnn(multi_cell, inputs, dtype=tf.float32)
+
+        if data_format == "channels_first":
+            output = tf.transpose(output, [0, 2, 1])
+
+        return output, 1, [(prefix + "_lstm"), output], 1

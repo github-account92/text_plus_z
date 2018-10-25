@@ -1,8 +1,10 @@
+"""Create model functions for tf.Estimator."""
 import numpy as np
 import tensorflow as tf
 
 from .utils.hooks import SummarySaverHookWithProfile
-from .utils.layers import (conv_layer, transposed_conv_layer, cnn1d_from_config)
+from .utils.layers import (conv_layer, transposed_conv_layer,
+                           cnn1d_from_config, rnn_from_config)
 from .utils.model import (decode, decode_top, dense_to_sparse, lr_annealer,
                           clip_and_step, compute_mmd,
                           # feature_map_global_variance_regularizer,
@@ -11,7 +13,7 @@ from .utils.model import (decode, decode_top, dense_to_sparse, lr_annealer,
 
 def w2l_model_fn(features, labels, mode, params, config):
     """Model function for tf.estimator.
-    
+
     Parameters:
         features: Should be a dict containing string keys:
             audio: batch_size x channels x seq_len tensor of input sequences.
@@ -24,16 +26,16 @@ def w2l_model_fn(features, labels, mode, params, config):
                     transcription.
         mode: Train, Evaluate or Predict modes from tf.estimator.
         params: Should be a dict with the following string keys:
-            model_config: Base path to config files to build the encoder/decoder
-                        *excluding* final layers.
+            model_config: Base path to config files to build the encoder/
+                          decoder *excluding* final layers.
             vocab_size: Size of the vocabulary, to get the size for the final
                         layer.
             act: The hidden activation function, e.g. tf.nn.relu or tf.nn.elu.
             use_bn: Bool, whether to use batch normalization.
-            data_format: String, channels_first or otherwise assumed to be 
+            data_format: String, channels_first or otherwise assumed to be
                          channels_last (this is not checked here!!).
             adam_args: List with Adam parameters (in order!!).
-            clipping: Float, to set the gradient clipping norm. 0 disables 
+            clipping: Float, to set the gradient clipping norm. 0 disables
                       clipping.
             vis: Int, whether to include visualizations besides loss and steps
                  per time and if so how often.
@@ -46,8 +48,8 @@ def w2l_model_fn(features, labels, mode, params, config):
             mmd: Coefficient for MMD loss for latent space (Wasserstein AE).
                  0 to disable.
             bottleneck: Size of bottleneck (style space).
-            use_ctc: Bool, whether to use CTC loss. If False, speech recognition
-                     is not trained.
+            use_ctc: Bool, whether to use CTC loss. If False, speech
+                     recognition is not trained.
             ae_coeff: Coefficient for AE loss.
             only_decode: Bool, if set only run the decoder and assume that the
                          inputs are logits + style space samples.
@@ -59,9 +61,10 @@ def w2l_model_fn(features, labels, mode, params, config):
             full_vae: Bool; If set apply WAE stuff to logits as well (i.e. MMD
                       loss).
         config: RunConfig object passed through from Estimator.
-        
+
     Returns:
         An EstimatorSpec to be used in tf.estimator.
+
     """
     # first get all the params for convenience
     model_config = params["model_config"]
@@ -119,8 +122,8 @@ def w2l_model_fn(features, labels, mode, params, config):
         if random:
             latent_logvar, _ = conv_layer(
                 pre_out, bottleneck, 1, 1, 1,
-                act=None, batchnorm=False, train=False, data_format=data_format,
-                vis=vis, name="latent_logvar")
+                act=None, batchnorm=False, train=False,
+                data_format=data_format, vis=vis, name="latent_logvar")
             latent_samples = tf.random_normal(tf.shape(latent_means))
             latent = latent_means + (latent_samples *
                                      tf.sqrt(tf.exp(latent_logvar)))
@@ -152,7 +155,7 @@ def w2l_model_fn(features, labels, mode, params, config):
                 logits_cl = tf.transpose(logits, [0, 2, 1])
             else:
                 logits_cl = logits
-            k_vals, k_inds = tf.nn.top_k(logits_cl, k=topk, sorted=False)
+            _, k_inds = tf.nn.top_k(logits_cl, k=topk, sorted=False)
 
             # TODO this might be an inefficient way to get a "k-hot" vector...
             char_identities = tf.one_hot(k_inds[:, :, 0], depth=vocab_size + 1)
@@ -256,9 +259,10 @@ def w2l_model_fn(features, labels, mode, params, config):
                     #     tf.minimum(phase_diff, 2*np.pi-phase_diff)*mask_inp)
                     reconstr_loss_phase = tf.reduce_sum(
                         tf.sin(tf.abs(phase_diff/2))*mask_inp)
-                    reconstr_loss = ((reconstr_loss_mag + reconstr_loss_phase) /
-                                     (n_channels * tf.count_nonzero(
-                                         mask_inp, dtype=tf.float32)))
+                    reconstr_loss = (
+                        (reconstr_loss_mag + reconstr_loss_phase) /
+                        (n_channels * tf.count_nonzero(mask_inp,
+                                                       dtype=tf.float32)))
                 else:
                     reconstr_loss = (tf.reduce_sum(
                         tf.squared_difference(audio,
@@ -413,9 +417,10 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
 
     A config file is a csv file where the header determines the network type.
     The header should follow the format: model_type where model type is one of
-    cnn, cnn_t (transposed).
-    After that, each line stands for a layer or a whole residual block. Lines
-    should follow the format: type,n_f,w_f,s_f,d_f
+    cnn, cnn_t (transposed), lstm.
+    After that, each line stands for a layer or a whole residual block.
+
+    If using CNN, lines should follow the format: type,n_f,w_f,s_f,d_f
         type: "layer", "block" or "dense", stating whether this is a single
               conv layer, a residual block or a dense block.
         n_f: Number of filters in the layer/block. For dense blocks, this is
@@ -423,6 +428,9 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
         w_f: Width of filters.
         s_f: Convolutional stride of the layer/block.
         d_f: Dilation rate of the layer/block.
+
+    If using RNN, lines should follow the format: size
+        size: Size of the RNN hidden layer.
 
     Parameters:
         config_path: Path to the model config file.
@@ -441,6 +449,7 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
     Returns:
         Output of the last layer/block, total stride of the network and a list
         of all layer/block activations with their names (tuples name, act).
+
     """
     print("Reading, building and applying {}...".format(prefix))
     with open(config_path) as model_config:
@@ -448,21 +457,33 @@ def read_apply_model_config(config_path, inputs, act, batchnorm, train,
         model_type = config_strings[0].strip()
         if model_type.split("_")[0] == "cnn":
             transpose = model_type == "cnn_t"
+            parsed_config = [parse_model_config_line_cnn(line) for
+                             line in config_strings[1:]]
+
+            output, total_stride, all_layers, total_pars = cnn1d_from_config(
+                parsed_config, inputs, act, batchnorm, train, data_format, vis,
+                transpose, prefix)
+        elif model_type == "lstm":
+            parsed_config = [parse_model_config_line_rnn(line) for
+                             line in config_strings[1:]]
+            output, total_stride, all_layers, total_pars = rnn_from_config(
+                parsed_config, inputs, data_format, vis, prefix)
         else:
             raise ValueError("Invalid model type {} "
                              "specified.".format(model_type))
 
-        parsed_config = [parse_model_config_line(line) for
-                         line in config_strings[1:]]
-
-        output, total_stride, all_layers, total_pars = cnn1d_from_config(
-            parsed_config, inputs, act, batchnorm, train, data_format, vis,
-            transpose, prefix)
-    print("Number of model parameters (encoder): {}".format(total_pars))
+    print("Number of model parameters ({}): {}".format(prefix, total_pars))
     return output, total_stride, all_layers
 
 
-def parse_model_config_line(l):
+def parse_model_config_line_cnn(l):
+    """Parse a single config line for CNN models."""
     entries = l.strip().split(",")
     return (entries[0], int(entries[1]), int(entries[2]), int(entries[3]),
             int(entries[4]))
+
+
+def parse_model_config_line_rnn(l):
+    """Parse a single config line for RNN models."""
+    entries = l.strip().split()
+    return (int(entries[0]),)

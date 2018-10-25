@@ -1,3 +1,4 @@
+"""Commonly used procedures related to running/analyzing models."""
 import os
 
 import numpy as np
@@ -21,6 +22,7 @@ def compute_all_latents(path, data_format="channels_first", *args, **kwargs):
         Dictionary mapping speaker ID to a list containing two elements:
             Element 1 is an n x v array containing all logits for the speaker.
             Element 2 is an n x d array containing all latents for the speaker.
+
     """
     if not os.path.isdir(path):
         os.mkdir(path)
@@ -76,6 +78,7 @@ def speaker_averages(store):
 
     Returns:
         Similar dict containing averages instead.
+
     """
     average_store = {}
     for sp in store:
@@ -96,6 +99,7 @@ def get_mmds(store, iters=100, batch_size=10000):
     Returns:
         Similar dict containing MMD for each speaker as well as overall MMD in
         an "<ALL>" key.
+
     """
     pl_data = tf.placeholder(tf.float32, shape=[None, None])
     pl_prior = tf.placeholder(tf.float32, shape=[None, None])
@@ -104,7 +108,7 @@ def get_mmds(store, iters=100, batch_size=10000):
 
     def mmd_estimator(_samples, _sess):
         mmd_est = 0
-        for ii in range(iters):
+        for _ in range(iters):
             batch_inds = np.random.choice(_samples.shape[0],
                                           size=batch_size, replace=False)
             latent_batch = latent_samples[batch_inds]
@@ -135,7 +139,8 @@ def get_mmds(store, iters=100, batch_size=10000):
         all_latent_samples = ((all_latent_samples - np.mean(all_latent_samples,
                                                             axis=0,
                                                             keepdims=True)) /
-                              np.std(all_latent_samples, axis=0, keepdims=True))
+                              np.std(all_latent_samples, axis=0,
+                                     keepdims=True))
 
         mmd_store["<ALL>"] = mmd_estimator(all_latent_samples, sess)
 

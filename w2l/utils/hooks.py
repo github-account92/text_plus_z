@@ -1,9 +1,10 @@
+"""Custom hooks for tf.Estimator/MonitoredSession."""
 import tensorflow as tf
 
 
 class SummarySaverHookWithProfile(tf.train.SummarySaverHook):
     """Modified version of the standard SummarySaverHook including profiling.
-    
+
     Use this instead of ProfilerHook, which just writes JSON files to disk you
     would have to look at some other way. This hook uses the Tensorboard
     profiling functionality instead.
@@ -12,12 +13,17 @@ class SummarySaverHookWithProfile(tf.train.SummarySaverHook):
     def __init__(self, save_steps=None, save_secs=None, profile_steps=None,
                  profile_secs=None, output_dir=None, summary_writer=None,
                  scaffold=None, summary_op=None):
+        """Initialize object. See SummarySaverHook.
+
+        We just set up a second timer for profiling.
+        """
         super().__init__(save_steps, save_secs, output_dir, summary_writer,
                          scaffold, summary_op)
         self._profile_timer = tf.train.SecondOrStepTimer(
             every_secs=profile_secs, every_steps=profile_steps)
 
     def before_run(self, run_context):
+        """Check if summary and/or profiling is requested this run."""
         self._request_summary = (
             self._next_step is None or
             self._timer.should_trigger_for_step(self._next_step))
@@ -35,6 +41,7 @@ class SummarySaverHookWithProfile(tf.train.SummarySaverHook):
         return tf.train.SessionRunArgs(requests, options=opts)
 
     def after_run(self, run_context, run_values):
+        """Add summaries/profiling if requested."""
         _ = run_context
         if not self._summary_writer:
             return

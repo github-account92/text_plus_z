@@ -1,3 +1,4 @@
+"""Reconstruct audio from spectrograms."""
 import librosa
 import numpy as np
 
@@ -12,6 +13,7 @@ def reconstruct_from_mag_phase(mag, phase, hop_length=160):
 
     Returns:
         The reconstructed time domain signal as a 1-dim Numpy array.
+
     """
     rec = mag * np.exp(1.j * phase)
     rec = librosa.istft(rec, hop_length=hop_length, center=True)
@@ -38,6 +40,7 @@ def griffin_lim(mag, iterations, window_size=400, hop_length=160,
 
     Returns:
         The reconstructed time domain signal as a 1-dim Numpy array.
+
     """
     time_slices = mag.shape[1]
     len_samples = int((time_slices-1)*hop_length)
@@ -72,6 +75,7 @@ def mel_to_linear(mel, log=False, power=False, sr=16000, window_size=400):
 
     Returns:
         Linear frequency spectrogram.
+
     """
     if log:
         mel = np.exp(mel)

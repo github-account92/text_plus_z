@@ -1,3 +1,4 @@
+"""Create synthetic 'text' (labels) from a simple language."""
 import numpy as np
 
 
@@ -12,13 +13,15 @@ def make_language(vocab, upper_weight=10, seed=0):
                       one).
         seed: Seed for the random weights.
 
-    Returns: Dict of dicts representing the language model.
+    Returns:
+        Dict of dicts representing the language model.
+
     """
     np.random.seed(seed)
     language_model = np.random.randint(
         low=0, high=upper_weight,
         size=(len(vocab), len(vocab))).astype(np.float32)
-    language_model[:, CH_IND[" "]] =+ 6
+    language_model[:, CH_IND[" "]] += 6
     language_model[CH_IND[" "], CH_IND[" "]] = 0.0  # space can't follow space
     language_model /= np.sum(language_model, axis=1, keepdims=True)
 
@@ -34,6 +37,10 @@ def make_sequence(lang_model, stop_prob=0.2, maxlen=0):
                    been selected.
         maxlen: Int; if given, stop generation once this many words (!) have
                 been generated
+
+    Returns:
+        String containing the sequence.
+
     """
     # to start, pretend we're following space
     start_ind = np.random.choice(lang_model.shape[1],
@@ -51,6 +58,15 @@ def make_sequence(lang_model, stop_prob=0.2, maxlen=0):
 
 
 def text_gen(maxlen=0):
+    """Create generator for infinite random sequences of a given language.
+
+    Parameters:
+        maxlen: If given, use this as maxlen for generated sequences.
+
+    Yields:
+        Random sequences.
+
+    """
     lang_mod = make_language(VOCAB)
     while True:
         yield make_sequence(lang_mod, maxlen=maxlen)

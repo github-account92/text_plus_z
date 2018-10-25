@@ -1,3 +1,4 @@
+"""Get synthetic data into the w2l interface."""
 import os
 import sys
 
@@ -17,12 +18,12 @@ def fulfill_config_synth(config_path):
 
     Parameters:
         config_path: Path to config csv.
+
     """
     data_config = read_data_config(config_path)
-    csv_path, array_dir, vocab_path, data_type = (data_config["csv_path"],
-                                                  data_config["array_dir"],
-                                                  data_config["vocab_path"],
-                                                  data_config["data_type"])
+    csv_path, array_dir, vocab_path = (data_config["csv_path"],
+                                       data_config["array_dir"],
+                                       data_config["vocab_path"])
 
     if not os.path.exists(csv_path):
         print("The requested corpus csv {} does not seem to exist. "
@@ -66,6 +67,7 @@ def make_corpus_csv(out_path):
 
     Parameters:
         out_path: Path you want the corpus csv to go to.
+
     """
     print("Creating {} from synthetic data...".format(out_path))
 
@@ -77,17 +79,25 @@ def make_corpus_csv(out_path):
         for corpus, samples in zip(corpora, examples_per_corpus):
             print("\tCreating {}...".format(corpus))
 
-            for ind in range(samples):
+            for ind in range(1, samples + 1):
                 transcr = next(gen)
                 fid = "-".join([corpus, corpus, str(ind).zfill(6)])
                 corpus_csv.write(
                     ",".join([fid, "dummy", transcr, corpus]) + "\n")
 
-                if not (ind + 1) % 1000:
+                if not ind % 1000:
                     print("\t\tCreated {} texts...".format(ind))
 
 
 def synthesize_audio(array_dir, vocab, csv_path):
+    """Synthesize signals for a given corpus csv.
+
+    Parameters:
+        array_dir: Path to directory where the created arrays should be stored.
+        vocab: Dict mapping characters to indices.
+        csv_path: Path to the corpus csv.
+
+    """
     print("Synthesizing audio in {}...".format(array_dir))
     if not os.path.isdir(array_dir):
         os.makedirs(array_dir)
@@ -96,11 +106,12 @@ def synthesize_audio(array_dir, vocab, csv_path):
     len_means, len_stds = make_length_params(vocab)
     with open(csv_path) as corpus_csv:
         for n, line in enumerate(corpus_csv, start=1):
-            fid, _, transcr, subset = line.strip().split(",")
+            fid, _, transcr, _ = line.strip().split(",")
             signal, segmentation = sonify(transcr, freqs, len_means, len_stds,
                                           vocab)
             np.save(os.path.join(array_dir, fid + ".npy"), signal)
-            np.save(os.path.join(array_dir, fid + "_segment.npy"), segmentation)
+            np.save(os.path.join(array_dir, fid + "_segment.npy"),
+                    segmentation)
 
             if not n % 1000:
                 print("\tCreated {} signals...".format(n))

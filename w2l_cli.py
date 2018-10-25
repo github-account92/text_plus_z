@@ -1,4 +1,4 @@
-# command line interface for running ASR models
+"""Command line interface for running ASR models."""
 import argparse
 from w2l.estimator_main import run_asr
 
@@ -34,9 +34,9 @@ parser.add_argument("-c", "--ctc_off",
 parser.add_argument("-d", "--random",
                     type=float,
                     default=0.,
-                    help="If > 0, use a random decoder. Coefficient is for the "
-                         "variance regularizer, which is weighted relative to "
-                         "the AE loss only (see -m).")
+                    help="If > 0, use a random decoder. Coefficient is for "
+                         "the variance regularizer, which is weighted "
+                         "relative to the AE loss only (see -m).")
 parser.add_argument("-e", "--full_vae",
                     action="store_true",
                     help="Set to also apply MMD and random encoder to the "
@@ -57,11 +57,11 @@ parser.add_argument("-m", "--mmd",
                     type=float,
                     default=0.,
                     help="Coefficient for MMD loss for latent space "
-                         "(Wasserstein VAE). 0 (default) deactivates it to use"
-                         " a regular autoencoder. NOTE that this coefficient is"
-                         " relative to the reconstruction loss only, and the "
-                         "sum of that and this loss will be weighted relative "
-                         "to CTC (via the -v argument).")
+                         "(Wasserstein VAE). 0 (default) deactivates it to "
+                         "use a regular autoencoder. NOTE that this "
+                         "coefficient is relative to the reconstruction loss "
+                         "only, and the sum of that and this loss will be "
+                         "weighted relative to CTC (via the -v argument).")
 parser.add_argument("-n", "--bottleneck",
                     type=int,
                     default=15,
@@ -93,9 +93,10 @@ parser.add_argument("-A", "--adam_params",
                     nargs=4,
                     type=float,
                     default=[1e-4, 0.9, 0.9, 1e-8],
-                    metavar=["adam_lr", "adam_beta1", "adam_beta2", "adam_eps"],
-                    help="Learning rate, beta1 and beta2 and epsilon for Adam. "
-                         "Defaults: 1e-4, 0.9, 0.9, 1e-8.")
+                    metavar=["adam_lr", "adam_beta1", "adam_beta2",
+                             "adam_eps"],
+                    help="Learning rate, beta1 and beta2 and epsilon for "
+                         "Adam. Defaults: 1e-4, 0.9, 0.9, 1e-8.")
 parser.add_argument("-B", "--batch_size",
                     type=int,
                     default=16,  # small but seems to work well
@@ -118,9 +119,9 @@ parser.add_argument("-F", "--fix_lr",
 parser.add_argument("-I", "--verbose_losses",
                     action="store_true",
                     help="Keep track of 'informative' losses even if they are "
-                         "not part of the cost function. This includes MMD and "
-                         "local/global latent variance (both only if AE is "
-                         "used at all).")
+                         "not part of the cost function. This includes MMD "
+                         "and local/global latent variance (both only if AE "
+                         "is used at all).")
 parser.add_argument("-M", "--momentum",
                     action="store_true",
                     help="Pass this to use plain Gradient Descent with "
@@ -140,28 +141,29 @@ parser.add_argument("-T", "--threshold",
                          "clipped. E.g. if the max is 15 and the threshold is "
                          "50, any value below -35 would be clipped to -35. It "
                          "is your responsibility to pass a reasonable value "
-                         "here -- this can vary heavily depending on the scale "
-                         "of the data. Passing 0 or any 'False' value here "
-                         "disables thresholding. NOTE: You probably don't want "
-                         "to use this with pre-normalized data since in that "
-                         "case, each example is essentially on its own scale "
-                         "(one that results in mean 0 and std 1, or whatever "
-                         "normalization was used) so a single threshold value "
-                         "isn't really applicable. However, it is perfectly "
-                         "fine to use this with the -N flag, since that "
-                         "normalization will be performed *after* thresholding."
-                         " Default: 0, disables thresholding.")
+                         "here -- this can vary heavily depending on the "
+                         "scale of the data. Passing 0 or any 'False' value "
+                         "here disables thresholding. NOTE: You probably "
+                         "don't want to use this with pre-normalized data "
+                         "since in that case, each example is essentially on "
+                         "its own scale (one that results in mean 0 and std "
+                         "1, or whatever normalization was used) so a single "
+                         "threshold value isn't really applicable. However, "
+                         "it is perfectly fine to use this with the -N flag, "
+                         "since that normalization will be performed *after* "
+                         "thresholding. Default: 0, disables thresholding.")
 parser.add_argument("-V", "--vis",
                     type=int,
                     default=100,
                     help="If set, add visualizations of gradient norms and "
-                         "activation distributions as well as graph profiling. "
-                         "This number signifies per how many steps you want to "
-                         "add summaries. Profiling is added this many steps "
-                         "times 50 (e.g. every 5000 steps if this is set to "
-                         "100). Default: 100. Setting this to 0 will only plot "
-                         "curves for loss and steps per second, every 100 "
-                         "steps. This may result in faster execution.")
+                         "activation distributions as well as graph "
+                         "profiling. This number signifies per how many steps "
+                         "you want to add summaries. Profiling is added this "
+                         "many steps times 50 (e.g. every 5000 steps if this "
+                         "is set to 100). Default: 100. Setting this to 0 "
+                         "will only plot curves for loss and steps per "
+                         "second, every 100 steps. This may result in faster "
+                         "execution.")
 parser.add_argument("-W", "--which_sets",
                     default="",
                     help="Which data subsets to use. Pass as comma-separated "

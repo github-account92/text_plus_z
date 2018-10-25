@@ -1,3 +1,4 @@
+"""Prepare everything for a given data config."""
 import argparse
 import os
 import sys
@@ -26,6 +27,7 @@ def fulfill_config(corpus_path, config_path):
         corpus_path: Path to corpus, e.g. /data/LibriSpeech or
         /data/corpora/German.
         config_path: Path to config csv.
+
     """
     data_config = read_data_config(config_path)
     csv_path, array_dir, vocab_path, data_type = (data_config["csv_path"],
@@ -82,6 +84,7 @@ def make_corpus_csv(librispeech_path, out_path):
     Parameters:
         librispeech_path: Path to LibriSpeech corpus, e.g. /data/LibriSpeech.
         out_path: Path you want the corpus csv to go to.
+
     """
     print("Creating {} from {}...".format(out_path, librispeech_path))
 
@@ -100,9 +103,9 @@ def make_corpus_csv(librispeech_path, out_path):
                 transcrs = [" ".join(t.strip().split()[1:]).lower()
                             for t in transcrs]
                 if len(files[:-1]) != len(transcrs):
-                    raise ValueError("Discrepancy in {}: {} audio files found, "
-                                     "but {} transcriptions (should be the "
-                                     "same).".format(
+                    raise ValueError("Discrepancy in {}: {} audio files "
+                                     "found, but {} transcriptions (should be "
+                                     "the same).".format(
                                         path, len(files[:-1]), len(transcrs)))
 
                 for f, t in zip(files[:-1], transcrs):
@@ -123,8 +126,8 @@ def preprocess_audio(csv_path, corpus_path, array_dir, data_type, n_freqs,
         array_dir: Path to directory where all the processed arrays should be
                    stored in.
         data_type: One of 'raw' or 'mel'. Whether to apply mel spectrogram
-                   transformation. If 'raw', n_freqs, window_size and hop_length
-                   are ignored.
+                   transformation. If 'raw', n_freqs, window_size and
+                   hop_length are ignored.
         n_freqs: Number of mel frequencies to use.
         window_size: STFT window size.
         hop_length: STFT hop length.
@@ -133,16 +136,18 @@ def preprocess_audio(csv_path, corpus_path, array_dir, data_type, n_freqs,
                        crash.
         keep_phase: If set, keep the phase angle of the linear spectrogram and
                     append it to the channels.
+
     """
     os.mkdir(array_dir)
     with open(csv_path) as corpus_csv:
         for n, line in enumerate(corpus_csv, start=1):
-            fid, fpath, _, subset = line.strip().split(",")
+            fid, fpath, _, _ = line.strip().split(",")
             path = os.path.join(corpus_path, fpath)
             audio, sr = librosa.load(path, sr=resample_rate)
             if not resample_rate and sr != 16000:
-                raise ValueError("Sampling rate != 16000 ({}) found in {} with "
-                                 "no resampling requested!".format(sr, path))
+                raise ValueError("Sampling rate != 16000 ({}) found in {} "
+                                 "with no resampling "
+                                 "requested!".format(sr, path))
             if data_type == "mel":
                 audio = raw_to_mel(audio, sr, window_size, hop_length, n_freqs,
                                    keep_phase)

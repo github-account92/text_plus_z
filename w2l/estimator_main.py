@@ -1,3 +1,4 @@
+"""Train, run or evaluate w2l models."""
 import os
 
 import tensorflow as tf
@@ -39,12 +40,14 @@ def run_asr(mode,
             container=None,
             only_decode=False):
     """
+    Execute generic ASR function.
+
     All of these parameters can be passed from w2l_cli. Please check that one
     for docs on what they are.
     Exception #1 is 'container' which is used only in "container mode".
     Exception #2 is only_decode, which should only ever be used in container
     mode because the other modes don't provide an appropriate input function.
-    
+
     Returns:
         Depends on mode!
         train: Nothing is returned.
@@ -55,6 +58,7 @@ def run_asr(mode,
                    the variables or their values, for example.
         container: Returns a generator over predictions for the given
                       container.
+
     """
     # Set up, verify arguments etc.
     tf.logging.set_verbosity(tf.logging.INFO)
@@ -70,11 +74,11 @@ def run_asr(mode,
         mel_freqs += data_config_dict["window_size"] // 2 + 1
 
     if act == "elu":
-        act = tf.nn.elu
+        act_fn = tf.nn.elu
     elif act == "relu":
-        act = tf.nn.relu
+        act_fn = tf.nn.relu
     else:  # swish -- since no other choice is allowed
-        def act(x): return x * tf.nn.sigmoid(x)
+        def act_fn(x): return x * tf.nn.sigmoid(x)
 
     # set up model
     ch_to_ind, ind_to_ch = parse_vocab(vocab_path)
@@ -82,7 +86,7 @@ def run_asr(mode,
 
     params = {"model_config": model_config,
               "vocab_size": len(ch_to_ind),
-              "act": act,
+              "act": act_fn,
               "use_bn": batchnorm,
               "data_format": data_format,
               "adam_args": adam_params,
@@ -226,13 +230,13 @@ def run_asr(mode,
 # Helpers
 ###############################################################################
 def leading_string(string):
-    """Splits e.g. "layer104" into "layer", "104" and returns "layer"."""
+    """Split e.g. "layer104" into "layer", "104" and returns "layer"."""
     alpha = string.rstrip('0123456789')
     return alpha
 
 
 def trailing_num(string):
-    """Splits e.g. "layer104" into "layer", "104" and returns int("104")."""
+    """Split e.g. "layer104" into "layer", "104" and returns int("104")."""
     alpha = string.rstrip('0123456789')
     num = string[len(alpha):]
     return int(num)

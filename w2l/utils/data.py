@@ -1,3 +1,4 @@
+"""Data-handling related utility."""
 import os
 
 import librosa
@@ -16,7 +17,7 @@ DATA_CONFIG_BOOL_ENTRIES = {"keep_phase"}
 
 def read_data_config(config_path):
     """Read a config file with information about the data.
-    
+
     The file should be in csv format and contain the following entries:
         csv_path: Path to a file like corpus.csv.
         array_dir: Path to the directory containing the corresponding numpy
@@ -34,12 +35,13 @@ def read_data_config(config_path):
         keep_phase: If set, keep the phase angle of the linear spectrogram and
                     append it to the channels.
         resample_rate: Hz to resample data to. Use 0 to not do any resampling.
-        
+
     Entries can be in any order. Missing or superfluous entries will result in
     a crash. You can add comments via lines starting with '#'.
-    
+
     Returns:
         dict with config file entries. Numerical entries are converted to int.
+
     """
     config_dict = dict()
     with open(config_path) as data_config:
@@ -75,7 +77,7 @@ def read_data_config(config_path):
 
 
 def extract_transcriptions_and_speaker(csv_path, which_sets):
-    """Returns lists of transcriptions and speakers from a corpus csv.
+    """Return lists of transcriptions and speakers from a corpus csv.
 
     Parameters:
         csv_path: Path to corpus csv that has all the transcriptions.
@@ -84,6 +86,7 @@ def extract_transcriptions_and_speaker(csv_path, which_sets):
 
     Returns:
         Two lists of strings, the transcriptions and speakers (in order!).
+
     """
     with open(csv_path, mode="r") as corpus:
         lines = [line.strip().split(",") for line in corpus]
@@ -100,7 +103,7 @@ def extract_transcriptions_and_speaker(csv_path, which_sets):
 
 
 def checkpoint_iterator(ckpt_folder):
-    """Iterates over checkpoints in order and returns them.
+    """Iterate over checkpoints in order and returns them.
 
     Parameters:
         ckpt_folder: Path to folder that has all the checkpoints. Usually the
@@ -108,8 +111,9 @@ def checkpoint_iterator(ckpt_folder):
 
     Yields:
         Paths to checkpoints, in order.
+
     """
-    # we can't rely on the meta file (doesn't store permanent checkpoints :() so
+    # we can't rely on the meta file (doesn't store permanent checkpoints) so
     # we check the folder instead.
     ckpts = set()
     for file in os.listdir(ckpt_folder):
@@ -137,6 +141,7 @@ def raw_to_mel(audio, sampling_rate, window_size, hop_length, n_freqs,
 
     Returns:
         Processed spectrogram.
+
     """
     spectro = librosa.stft(audio, n_fft=window_size, hop_length=hop_length,
                            center=True)

@@ -1,3 +1,4 @@
+"""Create input functions for tf.Estimator models."""
 import os
 
 import numpy as np
@@ -12,13 +13,13 @@ from w2l.utils.rejects import GERMAN_REJECTS
 ###############################################################################
 def w2l_input_fn_npy(csv_path, array_base_path, which_sets, train, vocab,
                      n_freqs, batch_size, threshold):
-    """Builds a tf.estimator input function for the preprocessed data.
-    
+    """Build a tf.estimator input function for preprocessed data.
+
     NOTE: The data on disk is assumed to be stored channels_first.
 
     Parameters:
-        csv_path: Should be the path to an appropriate csv file linking sound 
-                  files and label data. This csv should contain lines as 
+        csv_path: Should be the path to an appropriate csv file linking sound
+                  files and label data. This csv should contain lines as
                   follows:
                     file_id,file_path,transcription,set where:
                       file_id: unique identifier for the file.
@@ -33,15 +34,16 @@ def w2l_input_fn_npy(csv_path, array_base_path, which_sets, train, vocab,
                     subsets to be considered (e.g. train-clean-360 etc.).
         train: Whether to shuffle and repeat data.
         vocab: Dictionary mapping characters to indices.
-        n_freqs: Number of frequencies/"channels" in the data that will be 
+        n_freqs: Number of frequencies/"channels" in the data that will be
                  loaded. Needs to be set so that the model has this
                  information.
         batch_size: How big the batches should be.
         threshold: Float to use for thresholding input arrays.
                    See the _pyfunc further below for some important notes.
-    
+
     Returns:
         get_next op of iterator.
+
     """
     print("Building input function for {} set using file {}...".format(
         which_sets, csv_path))
@@ -106,8 +108,8 @@ def w2l_input_fn_npy(csv_path, array_base_path, which_sets, train, vocab,
 
 
 def _pyfunc_load_arrays_map_transcriptions(file_name, trans, vocab, threshold):
-    """Mapping function to go from file names to numpy arrays.
-     
+    """Map file names to numpy arrays.
+
     Goes from file_id, transcriptions to a tuple np_array, coded_transcriptions
     (integers).
     Lengths are returned as well so they are known after padded batching.
@@ -131,10 +133,11 @@ def _pyfunc_load_arrays_map_transcriptions(file_name, trans, vocab, threshold):
                    essentially on its own scale (one that results in mean 0 and
                    std 1, or whatever normalization was used) so a single
                    threshold value isn't really applicable.
-    
+
     Returns:
         Tuple of 2D numpy array (n_freqs x seq_len), scalar (is seq_len),
         1D array (label_len), scalar (is label_len)
+
     """
     array = np.load(file_name.decode("utf-8"))
     # we make sure arrays are even in the time axis because otherwise there can
@@ -177,8 +180,10 @@ def w2l_input_fn_from_container(array_container, n_freqs, vocab_size,
         n_freqs: Frequencies to be expected in data.
         vocab_size: Duh.
         bottleneck: Size of the non-logit latent space.
+
     Returns:
         get_next op of iterator.
+
     """
     def gen():
         while True:

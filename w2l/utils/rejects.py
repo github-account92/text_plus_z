@@ -1,3 +1,4 @@
+"""Files that should be ignored."""
 # These are completely quiet (all-0 arrays)
 GERMAN_REJECTS = [
     "5044001011_m_00.npy",

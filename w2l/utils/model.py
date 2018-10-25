@@ -1,3 +1,4 @@
+"""Model functionality that does not fit in layers (regularizers etc.)."""
 import numpy as np
 import tensorflow as tf
 
@@ -14,7 +15,9 @@ def feature_map_global_variance_regularizer(feature_map, mask):
         beforehand.
         mask: 2D tensor, batch x time.
 
-    Returns: Mean variance over the time axis.
+    Returns:
+        Mean variance over the time axis.
+
     """
     with tf.name_scope("global_variance_regularizer"):
         # we apply batch norm to the data to make it scale-invariant
@@ -38,7 +41,7 @@ def feature_map_global_variance_regularizer(feature_map, mask):
 
 
 def feature_map_local_variance_regularizer(feature_map, diff_norm, mask):
-    """Creates a neighborhood distance regularizer.
+    """Create a neighborhood distance regularizer.
 
     Parameters:
         feature_map: 3D tensor of shape batch x channels x time. Note that this
@@ -51,6 +54,7 @@ def feature_map_local_variance_regularizer(feature_map, diff_norm, mask):
 
     Returns:
         Scalar local variance measure.
+
     """
     with tf.name_scope("local_variance_regularizer"):
         # we apply batch norm to the data to make it scale-invariant
@@ -76,8 +80,9 @@ def feature_map_local_variance_regularizer(feature_map, diff_norm, mask):
             cos_sim = dotprods / (norms[:, :-1] * norms[:, 1:])
             pairwise = 1 - cos_sim
         else:
-            raise ValueError("Invalid difference norm specified: {}. Valid are "
-                             "'l1', 'l2', 'linf', 'cos'.".format(diff_norm))
+            raise ValueError("Invalid difference norm specified: {}. Valid "
+                             "are 'l1', 'l2', 'linf', "
+                             "'cos'.".format(diff_norm))
         masked = pairwise * tf.cast(mask[:, :-1], tf.float32)
         nonzeros = tf.count_nonzero(mask[:, :-1], dtype=tf.float32)
         return tf.reduce_sum(masked) / nonzeros
@@ -87,7 +92,7 @@ def feature_map_local_variance_regularizer(feature_map, diff_norm, mask):
 # Helper functions for various purposes.
 ###############################################################################
 def clip_and_step(optimizer, loss, clipping):
-    """Helper to compute/apply gradients with clipping.
+    """Compute and apply gradients with clipping.
 
     Parameters:
         optimizer: Subclass of tf.train.Optimizer (e.g. GradientDescent or
@@ -99,6 +104,7 @@ def clip_and_step(optimizer, loss, clipping):
         The train op.
         List of gradient, variable tuples, where gradients have been clipped.
         Global norm before clipping.
+
     """
     with tf.variable_scope("clip_and_step"):
         grads_and_vars = optimizer.compute_gradients(loss)
@@ -126,6 +132,7 @@ def dense_to_sparse(dense_tensor, sparse_val=0):
                     will probably want to choose this as the default value.
     Returns:
         SparseTensor equivalent to the dense input.
+
     """
     with tf.name_scope("dense_to_sparse"):
         sparse_inds = tf.where(tf.not_equal(dense_tensor, sparse_val),
@@ -139,7 +146,7 @@ def dense_to_sparse(dense_tensor, sparse_val=0):
 
 def decode(logits, seq_lengths, beam_width=100, top_paths=1,
            merge_repeated=False, pad_val=0, as_sparse=False):
-    """Helper for ctc decoding.
+    """Wrap ctc decoding.
 
     Parameters:
         logits: Passed straight to ctc decoder.
@@ -154,6 +161,7 @@ def decode(logits, seq_lengths, beam_width=100, top_paths=1,
     Returns:
         Either a list of sparse tensors, or a dense tensor with the requested
         top number of top predictions.
+
     """
     with tf.name_scope("decoding"):
         decoded_sparse_list, _ = tf.nn.ctc_beam_search_decoder(
@@ -203,6 +211,7 @@ def decode_top(logits, seq_lengths, beam_width=100, merge_repeated=False,
 
     Returns:
         Sparse or dense tensor with the top predictions.
+
     """
     with tf.name_scope("decoding"):
         decoded_sparse_list, _ = tf.nn.ctc_beam_search_decoder(
@@ -241,12 +250,16 @@ def lr_annealer(lr, factor, loss_history, global_step):
                       whether it's decreasing or not.
         global_step: Tensor containing the global step. As it is right now,
                      a check is only made if global step % n = 0.
+
+    Returns:
+        The new learning rate.
+
     """
     with tf.variable_scope("lr_annealer"):
         n = loss_history.shape.as_list()[0]
 
         def reduce_if_slope():
-            """Evaluated every n steps. Lowers LR if slope probably >= 0."""
+            # Evaluated every n steps. Lowers LR if slope probably >= 0
             with tf.name_scope("regression"):
                 x1 = tf.range(n, dtype=tf.float32, name="x")
                 x2 = tf.ones([n], dtype=tf.float32, name="bias")
@@ -265,7 +278,8 @@ def lr_annealer(lr, factor, loss_history, global_step):
                                                name="slope_distribution")
                 prob_decreasing = dist.cdf(0., name="prob_below_zero")
                 return tf.cond(tf.less_equal(prob_decreasing, 0.5),
-                               true_fn=lambda: lr * factor, false_fn=lambda: lr)
+                               true_fn=lambda: lr * factor,
+                               false_fn=lambda: lr)
 
         return tf.cond(tf.logical_or(
             tf.greater(tf.mod(global_step, n), 0), tf.equal(global_step, 0)),
@@ -279,9 +293,11 @@ def compute_kernel(x, y, sigma_sqr):
         x: n x d tensor of floats.
         y: Like x.
         sigma_sqr: Variance for the Gaussian kernel.
+
     Returns:
         n x n tensor where element i, j contains similarity between element i
         in x and element j in y.
+
     """
     x_broadcast = x[:, tf.newaxis, :]
     y_broadcast = y[tf.newaxis, :, :]
@@ -297,8 +313,10 @@ def compute_mmd(x, y, sigma_sqr=None):
         x: n x d tensor of floats.
         y: Like x.
         sigma_sqr: Variance for the Gaussian kernel.
+
     Returns:
         Scalar MMD value.
+
     """
     if sigma_sqr is None:
         sigma_sqr = tf.cast(x.shape.as_list()[1], tf.float32)
@@ -322,9 +340,10 @@ def leaky_random(vec_size, n_samples, std=1, diffusion=0.9):
 
     Returns:
         vec_size x n_samples matrix (i.e. channels_first)
+
     """
     samples = [std*np.random.randn(vec_size)]
-    for ii in range(n_samples - 1):
+    for _ in range(n_samples - 1):
         samples.append(diffusion*samples[-1] +
                        (1-diffusion)*std*np.random.randn(vec_size))
     return np.stack(samples, axis=1)
