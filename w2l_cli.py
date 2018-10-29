@@ -53,6 +53,11 @@ parser.add_argument("-k", "--topk",
                     help="Instead of logits, use identity of top k characters "
                          "at each time point for reconstructions. Default: 0, "
                          "just use full logits.")
+parser.add_argument("-l", "--blank_coeff",
+                    type=float,
+                    default=0.,
+                    help="Coefficient for blank label regularizer. Only used "
+                         "when CTC is active. Disabled by default.")
 parser.add_argument("-m", "--mmd",
                     type=float,
                     default=0.,
@@ -185,6 +190,7 @@ out = run_asr(mode=args.mode,
               act=args.act,
               ae_coeff=args.ae_coeff,
               batchnorm=not args.batchnorm_off,
+              blank_coeff=args.blank_coeff,
               bottleneck=args.bottleneck,
               data_format=args.data_format,
               full_vae=args.full_vae,

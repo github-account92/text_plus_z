@@ -3,7 +3,7 @@ import os
 
 import tensorflow as tf
 
-from .utils.data import (read_data_config, extract_transcriptions_and_speaker,
+from .utils.data import (read_data_config, parse_corpus_csv,
                          checkpoint_iterator)
 from .utils.errors import letter_error_rate_corpus, word_error_rate_corpus
 from .utils.vocab import parse_vocab
@@ -18,6 +18,7 @@ def run_asr(mode,
             act="relu",
             ae_coeff=0.,
             batchnorm=True,
+            blank_coeff=0.,
             bottleneck=15,
             data_format="channels_first",
             full_vae=False,
@@ -69,7 +70,7 @@ def run_asr(mode,
         data_config_dict["vocab_path"], data_config_dict["n_freqs"])
     # if we have phase in the data, the input function needs to know about the
     # additional channels
-    # TODO handle phase properly everywhere
+    # TODO: handle phase properly everywhere
     if data_config_dict["keep_phase"]:
         mel_freqs += data_config_dict["window_size"] // 2 + 1
 
@@ -104,7 +105,8 @@ def run_asr(mode,
               "topk": topk,
               "random": random,
               "full_vae": full_vae,
-              "verbose_losses": verbose_losses}
+              "verbose_losses": verbose_losses,
+              "blank_coeff": blank_coeff}
     # we set infrequent "permanent" checkpoints
     # we also disable the default SummarySaverHook IF profiling is requested
     config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=6,
@@ -117,7 +119,7 @@ def run_asr(mode,
         return estimator
 
     # if not return, set up corresponding inputs and do the requested thing
-    # TODO some kind of switch between LibriSpeech and German subsets
+    # TODO: some kind of switch between LibriSpeech and German subsets
     if not which_sets:
         if mode == "train":
             which_sets = ["train-clean-100", "train-clean-360",
@@ -149,14 +151,13 @@ def run_asr(mode,
 
     elif mode == "predict" or mode == "errors" or mode == "container":
         def gen():
-            transcriptions, speakers = extract_transcriptions_and_speaker(
-                csv_path, which_sets)
-            for ind, (prediction, transcr, speaker) in enumerate(
-                    zip(estimator.predict(input_fn=input_fn),
-                        transcriptions, speakers)):
+            corpus = parse_corpus_csv(csv_path, which_sets)
+            for ind, (prediction, (fid, transcr, speaker)) in enumerate(
+                    zip(estimator.predict(input_fn=input_fn), corpus)):
 
                 predictions_repacked = dict()
                 if mode != "container":
+                    predictions_repacked["fid"] = fid
                     predictions_repacked["true"] = transcr
                     predictions_repacked["speaker"] = speaker
 

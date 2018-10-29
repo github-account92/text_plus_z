@@ -60,6 +60,10 @@ def w2l_model_fn(features, labels, mode, params, config):
                     the coefficient for the L1 variance regularizer.
             full_vae: Bool; If set apply WAE stuff to logits as well (i.e. MMD
                       loss).
+            verbose_losses: Bool; if set add summaries for losses that aren't
+                            trained on.
+            blank_coeff: Coefficient for blank label activity regularizer;
+                         0 disables it.
         config: RunConfig object passed through from Estimator.
 
     Returns:
@@ -88,6 +92,7 @@ def w2l_model_fn(features, labels, mode, params, config):
     random = params["random"]
     full_vae = params["full_vae"]
     verbose_losses = params["verbose_losses"]
+    blank_coeff = params["blank_coeff"]
 
     cf = data_format == "channels_first"
 
@@ -95,7 +100,7 @@ def w2l_model_fn(features, labels, mode, params, config):
     audio, seq_lengths = features["audio"], features["length"]
     n_channels = audio.shape.as_list()[1]
     if not phase:
-        n_channels -= 201  # TODO don't hardcode
+        n_channels -= 201  # TODO: don't hardcode
         audio_with_phase = audio
         audio = audio[:, :n_channels, :]
     if labels is not None:  # predict passes labels=None...
@@ -157,14 +162,14 @@ def w2l_model_fn(features, labels, mode, params, config):
                 logits_cl = logits
             _, k_inds = tf.nn.top_k(logits_cl, k=topk, sorted=False)
 
-            # TODO this might be an inefficient way to get a "k-hot" vector...
+            # TODO: this might be an inefficient way to get a "k-hot" vector...
             char_identities = tf.one_hot(k_inds[:, :, 0], depth=vocab_size + 1)
             for ii in range(1, topk):
                 char_identities += tf.one_hot(k_inds[:, :, ii],
                                               depth=vocab_size + 1)
             if cf:
                 char_identities = tf.transpose(char_identities, [0, 2, 1])
-            # TODO maybe we need to embed character identities?
+            # TODO: maybe we need to embed character identities?
         else:
             char_identities = logits
 
@@ -235,6 +240,10 @@ def w2l_model_fn(features, labels, mode, params, config):
                                           name="avg_loss")
             tf.summary.scalar("ctc_loss", ctc_loss)
             total_loss += ctc_loss
+
+            if blank_coeff or verbose_losses:
+                blank_act = tf.reduce_mean(logits_tm[:, :, -1])
+                total_loss += blank_act
         if ae_coeff:
             print("Building reconstruction loss...")
             with tf.name_scope("reconstruction_loss"):
@@ -317,7 +326,7 @@ def w2l_model_fn(features, labels, mode, params, config):
                 ae_loss += reg_coeff * latent_var_loss
 
             total_loss += ae_coeff * ae_loss
-            # TODO maybe use non-random values for regularizer and logits
+            # TODO: maybe use non-random values for regularizer and logits
 
     if mode == tf.estimator.ModeKeys.TRAIN:
         with tf.variable_scope("optimizer"):
@@ -404,6 +413,9 @@ def w2l_model_fn(features, labels, mode, params, config):
                 ed_dist, name="edit_distance_eval")
             eval_metric_ops["ctc_loss"] = tf.metrics.mean(
                 ctc_loss, name="ctc_eval")
+            if blank_coeff or verbose_losses:
+                eval_metric_ops["blank_activity"] = tf.metrics.mean(
+                    blank_act, name="blank_activity")
     return tf.estimator.EstimatorSpec(mode=mode, loss=total_loss,
                                       eval_metric_ops=eval_metric_ops)
 
@@ -485,5 +497,5 @@ def parse_model_config_line_cnn(l):
 
 def parse_model_config_line_rnn(l):
     """Parse a single config line for RNN models."""
-    entries = l.strip().split()
+    entries = l.strip().split(",")
     return (int(entries[0]),)
