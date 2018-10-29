@@ -243,7 +243,8 @@ def w2l_model_fn(features, labels, mode, params, config):
 
             if blank_coeff or verbose_losses:
                 blank_act = tf.reduce_mean(logits_tm[:, :, -1])
-                total_loss += blank_act
+                total_loss += blank_coeff * blank_act
+                tf.summary.scalar("blank_activation", blank_act)
         if ae_coeff:
             print("Building reconstruction loss...")
             with tf.name_scope("reconstruction_loss"):
