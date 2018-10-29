@@ -53,7 +53,7 @@ def cnn1d_from_config(parsed_config, inputs, act, batchnorm, train,
                     previous, pars = conv_layer(
                         previous, n_f, w_f, s_f, d_f, act, batchnorm, train,
                         data_format, vis, name=name)
-            # TODO residual/dense blocks ignore some parameters ATM!
+            # TODO: residual/dense blocks ignore some parameters ATM!
             elif _type == "block":
                 previous, pars = residual_block(
                     previous, n_f, w_f, s_f, act, batchnorm, train,
@@ -230,7 +230,7 @@ def residual_block(inputs, n_filters, width_filters, stride_filters, act,
         Output of the block and number of parameters.
 
     """
-    # TODO either allow projections or raise in case of incompatible filters
+    # TODO: either allow projections or raise in case of incompatible filters
     print("\tCreating residual block {}...".format(name))
     if stride_filters > 1:
         raise ValueError("Strides != 1 currently not allowed for residual "
@@ -262,7 +262,7 @@ def dense_block(inputs, n_filters, width_filters, stride_filters, act,
     total_pars = 0
 
     with tf.variable_scope(name):
-        for ind in range(16):  # TODO don't hardcode block size
+        for ind in range(16):  # TODO: don't hardcode block size
             conv, pars = conv_layer(
                 inputs, n_filters, width_filters, stride_filters, act,
                 batchnorm, train, data_format, vis, None, "conv" + str(ind))
@@ -350,15 +350,17 @@ def rnn_from_config(parsed_config, inputs, data_format, vis, prefix):
         The final output.
         The total stride of the network (downsampling).
         A list of tuples (layer_name, activation).
-        Number of parameters (dummy atm).
+        Number of parameters.
 
     """
     with tf.variable_scope(prefix):
         cells = []
-        for ind, (layer_size,) in parsed_config:
+        for ind, (layer_size,) in enumerate(parsed_config):
             cells.append(tf.nn.rnn_cell.LSTMCell(
                 layer_size, use_peepholes=True, name="lstm_" + str(ind)))
         multi_cell = tf.nn.rnn_cell.MultiRNNCell(cells)
+        n_pars = sum([np.prod(weight.shape.as_list()) for
+                      weight in multi_cell.trainable_weights])
 
         if data_format == "channels_first":
             inputs = tf.transpose(inputs, [0, 2, 1])
@@ -367,4 +369,4 @@ def rnn_from_config(parsed_config, inputs, data_format, vis, prefix):
         if data_format == "channels_first":
             output = tf.transpose(output, [0, 2, 1])
 
-        return output, 1, [(prefix + "_lstm"), output], 1
+        return output, 1, [(prefix + "_lstm", output)], n_pars
