@@ -76,8 +76,8 @@ def read_data_config(config_path):
     return config_dict
 
 
-def extract_transcriptions_and_speaker(csv_path, which_sets):
-    """Return lists of transcriptions and speakers from a corpus csv.
+def parse_corpus_csv(csv_path, which_sets):
+    """Return file ids, transcriptions and speakers from a corpus csv.
 
     Parameters:
         csv_path: Path to corpus csv that has all the transcriptions.
@@ -85,21 +85,22 @@ def extract_transcriptions_and_speaker(csv_path, which_sets):
                     subsets to be considered (e.g. train-clean-360 etc.).
 
     Returns:
-        Two lists of strings, the transcriptions and speakers (in order!).
+        List of tuples of strings (fileid, transcription, speaker).
 
     """
     with open(csv_path, mode="r") as corpus:
         lines = [line.strip().split(",") for line in corpus]
-    lines = [line for line in lines if line[0] not in GERMAN_REJECTS]
-    transcrs = [line[2] for line in lines if line[3] in which_sets]
-    speakers = [line[0] for line in lines if line[3] in which_sets]
-    speakers = [l.split("-")[0] for l in speakers]
+    lines = [line for line in lines if line[0] not in GERMAN_REJECTS and
+             line[3] in which_sets]
+    transcrs = [line[2] for line in lines]
+    fids = [line[0] for line in lines]
+    speakers = [l.split("-")[0] for l in fids]
 
     if not transcrs:
         raise ValueError("Filtering resulted in size-0 dataset! Maybe you "
                          "specified an invalid subset? You supplied "
                          "'{}'.".format(which_sets))
-    return transcrs, speakers
+    return list(zip(fids, transcrs, speakers))
 
 
 def checkpoint_iterator(ckpt_folder):

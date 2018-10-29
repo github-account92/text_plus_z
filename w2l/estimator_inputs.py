@@ -78,7 +78,7 @@ def w2l_input_fn_npy(csv_path, array_base_path, which_sets, train, vocab,
     with tf.variable_scope("input"):
         data = tf.data.Dataset.from_generator(gen, (tf.string, tf.string))
 
-        # TODO try out bucketing
+        # TODO: try out bucketing
         if train:
             # this basically shuffles the full dataset
             data = data.apply(
