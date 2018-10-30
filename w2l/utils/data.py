@@ -176,7 +176,7 @@ def raw_to_pcen(audio, sampling_rate, window_size, hop_length, n_freqs):
     spectro = librosa.stft(audio, n_fft=window_size, hop_length=hop_length,
                            center=True)
     mel = librosa.feature.melspectrogram(S=spectro, sr=sampling_rate,
-                                         n_freqs=n_freqs)
+                                         n_mels=n_freqs)
     pcen = librosa.pcen(mel, sr=sampling_rate, hop_length=hop_length,
                         time_constant=0.285)
     return pcen
