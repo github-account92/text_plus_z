@@ -247,7 +247,8 @@ def w2l_model_fn(features, labels, mode, params, config):
             total_loss += ctc_loss
 
             if blank_coeff or verbose_losses:
-                blank_act = tf.reduce_mean(logits_tm[:, :, -1])
+                blank_prob = tf.nn.softmax(logits_tm)
+                blank_act = tf.reduce_mean(blank_prob[:, :, -1])
                 total_loss += blank_coeff * blank_act
                 tf.summary.scalar("blank_activation", blank_act)
         if ae_coeff:
