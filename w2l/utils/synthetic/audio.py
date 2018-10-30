@@ -10,6 +10,7 @@ def make_frequency_table(vocab, channels=20, mean=-3, std=5, seed=1):
 
     Parameters:
         vocab: List of characters.
+        channels: Number of channels to sample from.
         mean: Mean for the random samples.
         std: Standard deviation for the random samples.
         seed: Seed for random numbers.
@@ -109,6 +110,7 @@ def sonify(utterance, freq_table, length_means, length_stds, vocab,
         audio.append(pron)
         segmentation += [vocab[char]] * pron_length
     audio.append(make_silence())
+    segmentation += [-1] * audio[-1].shape[1]
 
     audio = np.concatenate(audio, axis=1)
     smoothened = savgol_filter(audio, polyorder=1, window_length=5)
