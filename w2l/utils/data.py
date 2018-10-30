@@ -173,8 +173,8 @@ def raw_to_pcen(audio, sampling_rate, window_size, hop_length, n_freqs):
     Returns:
         PCEN spectrogram, bins x time.
     """
-    spectro = librosa.stft(audio, n_fft=window_size, hop_length=hop_length,
-                           center=True)
+    spectro = np.abs(librosa.stft(audio, n_fft=window_size,
+                                  hop_length=hop_length, center=True))
     mel = librosa.feature.melspectrogram(S=spectro, sr=sampling_rate,
                                          n_mels=n_freqs)
     pcen = librosa.pcen(mel, sr=sampling_rate, hop_length=hop_length,
