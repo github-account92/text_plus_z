@@ -1,0 +1,10 @@
+# config for PCEN data.
+csv_path,/data/corpus_new.csv
+array_dir,/cache/English_pcen
+vocab_path,/data/vocab
+data_type,pcen
+n_freqs,128
+window_size,400
+hop_length,160
+keep_phase,False
+resample_rate,0

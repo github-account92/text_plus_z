@@ -6,7 +6,7 @@ import sys
 import librosa
 import numpy as np
 
-from w2l.utils.data import read_data_config, raw_to_mel
+from w2l.utils.data import read_data_config, raw_to_mel, raw_to_pcen
 from w2l.utils.synthetic.files import fulfill_config_synth
 from w2l.utils.vocab import make_vocab
 
@@ -125,9 +125,8 @@ def preprocess_audio(csv_path, corpus_path, array_dir, data_type, n_freqs,
                      /data/corpora/German.
         array_dir: Path to directory where all the processed arrays should be
                    stored in.
-        data_type: One of 'raw' or 'mel'. Whether to apply mel spectrogram
-                   transformation. If 'raw', n_freqs, window_size and
-                   hop_length are ignored.
+        data_type: One of 'raw', 'mel' or PCEN. Whether to applytransformation.
+                   If 'raw', n_freqs, window_size and hop_length are ignored.
         n_freqs: Number of mel frequencies to use.
         window_size: STFT window size.
         hop_length: STFT hop length.
@@ -151,6 +150,8 @@ def preprocess_audio(csv_path, corpus_path, array_dir, data_type, n_freqs,
             if data_type == "mel":
                 audio = raw_to_mel(audio, sr, window_size, hop_length, n_freqs,
                                    keep_phase)
+            elif data_type == "pcen":
+                audio = raw_to_pcen(audio, sr, window_size, hop_length, n_freqs)
             else:  # data_type == "raw"
                 audio = audio[np.newaxis, :]  # add channel axis
 

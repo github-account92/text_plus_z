@@ -143,7 +143,7 @@ def raw_to_mel(audio, sampling_rate, window_size, hop_length, n_freqs,
                     append it to the channels.
 
     Returns:
-        Processed spectrogram.
+        Processed spectrogram, bins x time.
 
     """
     spectro = librosa.stft(audio, n_fft=window_size, hop_length=hop_length,
@@ -156,3 +156,27 @@ def raw_to_mel(audio, sampling_rate, window_size, hop_length, n_freqs,
         phase_angle = np.angle(spectro)
         logmel = np.concatenate((logmel, phase_angle))
     return logmel
+
+
+def raw_to_pcen(audio, sampling_rate, window_size, hop_length, n_freqs):
+    """Go from 1D numpy array containing audio waves to PCEN spectrogram.
+
+    Parameters might not be optimal...
+
+    Parameters:
+        audio: 1D numpy array containing the audio.
+        sampling_rate: Sampling rate of audio.
+        window_size: STFT window size.
+        hop_length: Distance between successive STFT windows.
+        n_freqs: Number of mel frequency bins.
+
+    Returns:
+        PCEN spectrogram, bins x time.
+    """
+    spectro = librosa.stft(audio, n_fft=window_size, hop_length=hop_length,
+                           center=True)
+    mel = librosa.feature.melspectrogram(S=spectro, sr=sampling_rate,
+                                         n_freqs=n_freqs)
+    pcen = librosa.pcen(mel, sr=sampling_rate, hop_length=hop_length,
+                        time_constant=0.285)
+    return pcen
