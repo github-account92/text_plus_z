@@ -26,7 +26,9 @@ def read_data_config(config_path):
         data_type: One of 'raw' or 'mel', what kind of data is in the arrays.
         n_freqs: Frequencies (e.g. STFT or mel bins) to be expected in the
                  data. Will lead to problems if this does not match with
-                 reality. If data_type is 'raw' this should be 1!
+                 reality. If data_type is 'raw' this should be 1! If including
+                 phase in the data, those frequencies should *not* be included
+                 here.
         window_size: Window size to use for STFT (n_fft argument in librosa).
                      Relevant for preprocessing only (and for you to know the
                      parameters of the data). Ignored if data_type is 'raw'.

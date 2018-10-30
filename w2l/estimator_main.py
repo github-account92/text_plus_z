@@ -65,14 +65,16 @@ def run_asr(mode,
     tf.logging.set_verbosity(tf.logging.INFO)
 
     data_config_dict = read_data_config(data_config)
-    csv_path, array_dir, vocab_path, mel_freqs = (
+    csv_path, array_dir, vocab_path, n_freqs = (
         data_config_dict["csv_path"], data_config_dict["array_dir"],
         data_config_dict["vocab_path"], data_config_dict["n_freqs"])
     # if we have phase in the data, the input function needs to know about the
     # additional channels
-    # TODO: handle phase properly everywhere
     if data_config_dict["keep_phase"]:
-        mel_freqs += data_config_dict["window_size"] // 2 + 1
+        phase_freqs_in_data = data_config_dict["window_size"] // 2 + 1
+        n_freqs += phase_freqs_in_data
+    else:
+        phase_freqs_in_data = 0
 
     if act == "elu":
         act_fn = tf.nn.elu
@@ -102,6 +104,7 @@ def run_asr(mode,
               "ae_coeff": ae_coeff,
               "only_decode": only_decode,
               "phase": phase,
+              "phase_freqs_in_data": phase_freqs_in_data,
               "topk": topk,
               "random": random,
               "full_vae": full_vae,
@@ -137,12 +140,12 @@ def run_asr(mode,
 
         def input_fn():
             return w2l_input_fn_from_container(
-                container, mel_freqs, len(ch_to_ind) + 1, bottleneck)
+                container, n_freqs, len(ch_to_ind) + 1, bottleneck)
     else:
         def input_fn():
             return w2l_input_fn_npy(
                 csv_path, array_dir, which_sets, train=mode == "train",
-                vocab=ch_to_ind, n_freqs=mel_freqs, batch_size=batch_size,
+                vocab=ch_to_ind, n_freqs=n_freqs, batch_size=batch_size,
                 threshold=threshold)
 
     if mode == "train":

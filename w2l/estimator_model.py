@@ -53,7 +53,11 @@ def w2l_model_fn(features, labels, mode, params, config):
             ae_coeff: Coefficient for AE loss.
             only_decode: Bool, if set only run the decoder and assume that the
                          inputs are logits + style space samples.
-            phase: If false, discard the phase in the input.
+            phase: If false, discard the phase in the input IF it is there in
+                   the first place.
+            phase_freqs_in_data: Int, how many phase frequencies are in the
+                                 data. Should generally be windowsize/2 + 1 or
+                                 just 0.
             topk: Int, if > 0 only keep information on the top k logits at each
                   time step.
             random: Float, if > 0 use a random encoder. This float represents
@@ -88,6 +92,7 @@ def w2l_model_fn(features, labels, mode, params, config):
     ae_coeff = params["ae_coeff"]
     only_decode = params["only_decode"]
     phase = params["phase"]
+    phase_freqs_in_data = params["phase_freqs_in_data"]
     topk = params["topk"]
     random = params["random"]
     full_vae = params["full_vae"]
@@ -99,8 +104,8 @@ def w2l_model_fn(features, labels, mode, params, config):
     # construct model input -> output
     audio, seq_lengths = features["audio"], features["length"]
     n_channels = audio.shape.as_list()[1]
-    if not phase:
-        n_channels -= 201  # TODO: don't hardcode
+    if not phase and phase_freqs_in_data:
+        n_channels -= phase_freqs_in_data
         audio_with_phase = audio
         audio = audio[:, :n_channels, :]
     if labels is not None:  # predict passes labels=None...
