@@ -1,7 +1,6 @@
 """Prepare everything for a given data config."""
 import argparse
 import os
-import sys
 
 import librosa
 import numpy as np
@@ -47,11 +46,17 @@ def fulfill_config(corpus_path, config_path):
         print("The requested corpus csv {} does not seem to exist. "
               "Creating...".format(csv_path))
         make_corpus_csv(corpus_path, csv_path)
+    else:
+        print("Corpus csv {} exists already. Skipping "
+              "creation...".format(csv_path))
 
     if not os.path.exists(vocab_path):
         print("The requested vocabulary file {} does not seem to exist. "
               "Creating...".format(vocab_path))
         make_vocab(csv_path, vocab_path)
+    else:
+        print("Vocabulary file {} exists already. Skipping "
+              "creation...".format(vocab_path))
 
     if not os.path.isdir(array_dir):
         create_data_dir = input("The requested data directory {} does not "
@@ -62,9 +67,12 @@ def fulfill_config(corpus_path, config_path):
             preprocess_audio(csv_path, corpus_path, array_dir, data_type,
                              n_freqs, window_size, hop_length, resample_rate,
                              keep_phase)
+            print("Done creating {}.".format(array_dir))
         else:
-            sys.exit("Data directory does not exist and creation not "
-                     "requested.")
+            print("Data directory does not exist and creation not requested.")
+    else:
+        print("Data directory {} exists already. Skipping "
+              "creation...".format(array_dir))
 
 
 def make_corpus_csv(librispeech_path, out_path):
