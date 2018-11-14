@@ -54,18 +54,20 @@ def cnn1d_from_config(parsed_config, inputs, act, batchnorm, train,
                         previous, n_f, w_f, s_f, d_f, act, batchnorm, train,
                         data_format, vis, name=name)
             # TODO: residual/dense blocks ignore some parameters ATM!
+
             elif _type == "block":
                 previous, pars = residual_block(
                     previous, n_f, w_f, s_f, act, batchnorm, train,
                     data_format, vis, name=name)
-            elif _type == "dense":
-                previous, pars = dense_block(
-                    previous, n_f, w_f, s_f, act, batchnorm, train,
-                    data_format, vis, name=name)
+            #elif _type == "dense":
+            #    previous, pars = dense_block(
+            #        previous, n_f, w_f, s_f, act, batchnorm, train,
+            #        data_format, vis, name=name)
+
             else:
                 raise ValueError(
                     "Invalid layer type specified in layer {}! Valid are "
-                    "'layer', 'block', 'dense'. You specified "
+                    "'layer', 'block'. You specified "
                     "{}.".format(ind, _type))
             all_layers.append((prefix + "_" + name, previous))
             total_stride *= s_f
@@ -215,22 +217,24 @@ def gated_conv_layer(inputs, n_filters, width_filters, stride_filters,
 
 
 def residual_block(inputs, n_filters, width_filters, stride_filters, act,
-                   batchnorm, train, data_format, vis, name):
+                   batchnorm, train, data_format, vis, name, project=None):
     """Build a simple residual block.
 
-    No projection implemented! This means the inputs need to have the same
-    dimensionality as the outputs of this layer. So: Number of filters needs
-    to be carefully chosen, and strides > 1 are not allowed for a block.
+    Currently, strides > 1 are not allowed for a block.
 
     Parameters:
         See conv_layer. Number of filters etc. are used for both layers within
         the block.
+        project: If True, always apply a 1x1 conv projection to the block input.
+                 If False, do not apply projection -- raises an error in case
+                 of incompatible dimensions.
+                 If None, apply a projection if necessary due to incompatible
+                 dimensions.
 
     Returns:
         Output of the block and number of parameters.
 
     """
-    # TODO: either allow projections or raise in case of incompatible filters
     print("\tCreating residual block {}...".format(name))
     if stride_filters > 1:
         raise ValueError("Strides != 1 currently not allowed for residual "
@@ -238,13 +242,83 @@ def residual_block(inputs, n_filters, width_filters, stride_filters, act,
 
     with tf.variable_scope(name):
         conv1, pars1 = conv_layer(
-            inputs, n_filters, width_filters, stride_filters, act, batchnorm,
-            train, data_format, vis, None, "conv1")
+            inputs, n_filters, width_filters, stride_filters, 1, act, batchnorm,
+            train, data_format, vis, "conv1")
         conv2, pars2 = conv_layer(
-            conv1, n_filters, width_filters, stride_filters, None, batchnorm,
-            train, data_format, vis, None, "conv2")
+            conv1, n_filters, width_filters, stride_filters, 1, None, batchnorm,
+            train, data_format, vis, "conv2")
+
+        channel_axis = 1 if data_format == "channels_first" else -1
+        in_channels = inputs.shape.as_list()[channel_axis]
+        if project or project is None and n_filters != in_channels:
+            print("\t\tCreating input projection...")
+            inputs, pars_proj = conv_layer(
+                inputs, n_filters, 1, 1, 1, None, batchnorm, train, data_format,
+                vis, name="projection")
+        elif project is False and n_filters != in_channels:
+            raise ValueError("Incompatible sizes in residual block and no "
+                             "projection requested Input: {} channels; Output: "
+                             "{} channels.".format(in_channels, n_filters))
+        else:
+            pars_proj = 0
+
         out = act(conv2 + inputs) if act else conv2 + inputs
-        return out, pars1 + pars2
+        return out, pars1 + pars2 + pars_proj
+
+
+def residual_block_bottleneck(inputs, n_filters, width_filters, stride_filters,
+                              act, batchnorm, train, data_format, vis, name,
+                              bottleneck_factor=4, blowup_factor=4):
+    """Residual block with bottleneck.
+
+    Parameters:
+        See conv_layer.
+        bottleneck_factor: By how much smaller the bottleneck should be. E.g.
+                           when this is 4 and the input has filter size 256,
+                           the bottleneck will be 64.
+        blowup_factor: How much filter size should be increased after the
+                       bottleneck. To increase filter dimensions inbetween
+                       blocks you can use a different value here than the
+                       bottleneck. In this case an input projection will be
+                       applied!
+
+    Returns:
+        Output of the block and number of parameters.
+
+    """
+    print("\tCreating residual bottleneck block {}...".format(name))
+    if stride_filters > 1:
+        raise ValueError("Strides != 1 currently not allowed for residual "
+                         "blocks.")
+
+    with tf.variable_scope(name):
+        channel_axis = 1 if data_format == "channels_first" else -1
+        in_channels = inputs.shape.as_list()[channel_axis]
+
+        conv1, pars1 = conv_layer(
+            inputs, in_channels // bottleneck_factor, 1,
+            stride_filters, 1, act, batchnorm, train, data_format, vis,
+            name="conv_bottleneck")
+        conv2, pars2 = conv_layer(
+            conv1, in_channels // bottleneck_factor, width_filters,
+            stride_filters, 1, act, batchnorm, train, data_format, vis,
+            name="conv_main")
+        conv3, pars3 = conv_layer(
+            conv2, in_channels // bottleneck_factor * blowup_factor, 1,
+            stride_filters, 1, None, batchnorm, train, data_format, vis,
+            name="conv_blowup")
+
+        if bottleneck_factor != blowup_factor:
+            print("\t\tCreating input projection...")
+            inputs, pars_proj = conv_layer(
+                inputs, in_channels // bottleneck_factor * blowup_factor, 1, 1,
+                1, None, batchnorm, train, data_format,vis, name="projection")
+        else:
+            pars_proj = 0
+
+        out = act(inputs + conv3) if act else inputs + conv3
+        return out, pars1 + pars2 + pars3 + pars_proj
+
 
 
 ###############################################################################
