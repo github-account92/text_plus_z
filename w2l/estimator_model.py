@@ -199,40 +199,6 @@ def w2l_model_fn(features, labels, mode, params, config):
     if total_stride > 1:
         seq_lengths = tf.cast(seq_lengths / total_stride, tf.int32)
 
-    if mode == tf.estimator.ModeKeys.PREDICT:
-        with tf.name_scope("predictions"):
-            # predictions have to map strings to tensors, so I can't just
-            # add the encoder/decoder layer lists -- these are repackaged in
-            # estimator_main.py
-            predictions = {"logits": logits,
-                           "probabilities": tf.nn.softmax(
-                               logits,
-                               dim=1 if cf else -1,
-                               name="softmax_probabilities"),
-                           "latent": latent,
-                           "input": audio,
-                           "input_length": seq_lengths_original,
-                           "reconstruction": reconstructed}
-            if random:
-                predictions["latent_means"] = latent_means
-                predictions["latent_logvar"] = latent_logvar
-                if full_vae:
-                    predictions["logits_means"] = logits_means
-                    predictions["logits_logvar"] = logits_logvar
-
-            for name, act in encoder_layers + decoder_layers:
-                predictions[name] = act
-            if use_ctc:
-                decoded = decode(logits_tm, seq_lengths, top_paths=100,
-                                 pad_val=-1)
-                predictions["decoding"] = decoded
-            if not phase:
-                predictions["audio_with_phase"] = audio_with_phase
-
-            tf.gradients(ctc_loss, audio)[0]
-
-        return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
-
     # loss comes before predictions because we need it for adversarial examples
     # TODO refactor into separate function(s)
     with tf.name_scope("loss"):
