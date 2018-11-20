@@ -18,12 +18,15 @@ def w2l_model_fn(features, labels, mode, params, config):
         features: Should be a dict containing string keys:
             audio: batch_size x channels x seq_len tensor of input sequences.
                    Note: Must be channels_first!!
-            length: batch_size tensor of sequence lengths for each input.
-        labels: Should be (None for predict or) a dict containing string keys:
+            audio_length: batch_size tensor of sequence lengths for each input.
+          Due to REASONS, it should also include the labels via following
+          keys:
             transcription: batch_size x label_len tensor of label indices
                            (standing for letters).
-            length: batch_size tensor of sequence lengths for each
-                    transcription.
+            trans_length: batch_size tensor of sequence lengths for each
+                          transcription.
+          If you don't have labels for your data, pass dummies anyway!
+        labels: Ignored. Pass labels in features!!
         mode: Train, Evaluate or Predict modes from tf.estimator.
         params: Should be a dict with the following string keys:
             model_config: Base path to config files to build the encoder/
@@ -102,14 +105,13 @@ def w2l_model_fn(features, labels, mode, params, config):
     cf = data_format == "channels_first"
 
     # construct model input -> output
-    audio, seq_lengths = features["audio"], features["length"]
+    audio, seq_lengths = features["audio"], features["audio_length"]
     n_channels = audio.shape.as_list()[1]
     if not phase and phase_freqs_in_data:
         n_channels -= phase_freqs_in_data
         audio_with_phase = audio
         audio = audio[:, :n_channels, :]
-    if labels is not None:  # predict passes labels=None...
-        labels = labels["transcription"]
+    labels = features["transcription"]
     if not cf:
         audio = tf.transpose(audio, [0, 2, 1])
 
@@ -199,7 +201,38 @@ def w2l_model_fn(features, labels, mode, params, config):
     if total_stride > 1:
         seq_lengths = tf.cast(seq_lengths / total_stride, tf.int32)
 
-    # loss comes before predictions because we need it for adversarial examples
+    if mode == tf.estimator.ModeKeys.PREDICT:
+        with tf.name_scope("predictions"):
+            # predictions have to map strings to tensors, so I can't just
+            # add the encoder/decoder layer lists -- these are repackaged in
+            # estimator_main.py
+            predictions = {"logits": logits,
+                           "probabilities": tf.nn.softmax(
+                               logits,
+                               dim=1 if cf else -1,
+                               name="softmax_probabilities"),
+                           "latent": latent,
+                           "input": audio,
+                           "input_length": seq_lengths_original,
+                           "reconstruction": reconstructed}
+            if random:
+                predictions["latent_means"] = latent_means
+                predictions["latent_logvar"] = latent_logvar
+                if full_vae:
+                    predictions["logits_means"] = logits_means
+                    predictions["logits_logvar"] = logits_logvar
+
+            for name, act in encoder_layers + decoder_layers:
+                predictions[name] = act
+            if use_ctc:
+                decoded = decode(logits_tm, seq_lengths, top_paths=100,
+                                 pad_val=-1)
+                predictions["decoding"] = decoded
+            if not phase:
+                predictions["audio_with_phase"] = audio_with_phase
+
+        return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
+
     # TODO refactor into separate function(s)
     with tf.name_scope("loss"):
         total_loss = 0
@@ -305,42 +338,6 @@ def w2l_model_fn(features, labels, mode, params, config):
 
             total_loss += ae_coeff * ae_loss
             # TODO: maybe use non-random values for regularizer and logits
-
-    if mode == tf.estimator.ModeKeys.PREDICT:
-        with tf.name_scope("predictions"):
-            # predictions have to map strings to tensors, so I can't just
-            # add the encoder/decoder layer lists -- these are repackaged in
-            # estimator_main.py
-            predictions = {"logits": logits,
-                           "probabilities": tf.nn.softmax(
-                               logits,
-                               dim=1 if cf else -1,
-                               name="softmax_probabilities"),
-                           "latent": latent,
-                           "input": audio,
-                           "input_length": seq_lengths_original,
-                           "reconstruction": reconstructed}
-            if random:
-                predictions["latent_means"] = latent_means
-                predictions["latent_logvar"] = latent_logvar
-                if full_vae:
-                    predictions["logits_means"] = logits_means
-                    predictions["logits_logvar"] = logits_logvar
-
-            for name, act in encoder_layers + decoder_layers:
-                predictions[name] = act
-            if use_ctc:
-                decoded = decode(logits_tm, seq_lengths, top_paths=100,
-                                 pad_val=-1)
-                predictions["decoding"] = decoded
-            if not phase:
-                predictions["audio_with_phase"] = audio_with_phase
-
-            if use_ctc:
-                predictions["grad_for_inputs"] = tf.gradients(ctc_loss,
-                                                              audio)[0]
-
-        return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
     if mode == tf.estimator.ModeKeys.TRAIN:
         with tf.variable_scope("optimizer"):

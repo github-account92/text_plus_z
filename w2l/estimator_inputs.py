@@ -190,14 +190,18 @@ def w2l_input_fn_from_container(array_container, n_freqs, vocab_size,
             as_mel = raw_to_mel(
                 array_container[0], 16000, 400, 160, 128,
                 keep_phase=True).astype(np.float32)
-            yield (as_mel, np.int32(as_mel.shape[-1]), array_container[1])
+            yield (as_mel, np.int32(as_mel.shape[-1]), array_container[1],
+                   np.array([0], dtype=np.int32), np.int32(1))
 
     with tf.variable_scope("input"):
         data = tf.data.Dataset.from_generator(
-            gen, (tf.float32, tf.int32, tf.float32))
+            gen, (tf.float32, tf.int32, tf.float32, tf.int32, tf.int32))
         data = data.padded_batch(
             1,
-            ((n_freqs, -1), (), (vocab_size+bottleneck, -1)))
+            padded_shapes=((n_freqs, -1), (), (vocab_size+bottleneck, -1),
+                           (1,), ()),
+            padding_values=(np.log(1e-10).astype(np.float32), 0, 0.,
+                            -1, 0))
         data = data.map(pack_inputs_in_dict_cont, num_parallel_calls=3)
 
         # build iterator
@@ -210,11 +214,16 @@ def w2l_input_fn_from_container(array_container, n_freqs, vocab_size,
 # Helpers
 ###############################################################################
 def pack_inputs_in_dict(audio, length, trans, trans_length):
-    """For estimator interface (only allows one input -> pack into dict)."""
-    return ({"audio": audio, "length": length},
-            {"transcription": trans, "length": trans_length})
+    """For estimator interface (only allows one input -> pack into dict).
+
+    Do note that the labels are also packed into the feature dict and None is
+    passed for the label tensor!!
+    """
+    return ({"audio": audio, "audio_length": length,
+            "transcription": trans, "trans_length": trans_length}, None)
 
 
-def pack_inputs_in_dict_cont(audio, length, latent):
+def pack_inputs_in_dict_cont(audio, length, latent, trans, trans_length):
     """For estimator interface (only allows one input -> pack into dict)."""
-    return {"audio": audio, "length": length, "latent": latent}
+    return ({"audio": audio, "audio_length": length, "latent": latent,
+             "transcription": trans, "trans_length": trans_length}, None)
