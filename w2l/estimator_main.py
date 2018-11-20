@@ -188,7 +188,7 @@ def run_asr(mode,
                 predictions_repacked["decoder_layers"] = decoder_layers
 
                 other_keys = ["logits", "latent", "input", "reconstruction",
-                              "input_length"]
+                              "input_length", "adversarial_gradient"]
                 if random:
                     other_keys += ["latent_means", "latent_logvar"]
                     if full_vae:
