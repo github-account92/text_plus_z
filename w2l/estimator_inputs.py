@@ -220,10 +220,10 @@ def pack_inputs_in_dict(audio, length, trans, trans_length):
     passed for the label tensor!!
     """
     return ({"audio": audio, "audio_length": length,
-            "transcription": trans, "trans_length": trans_length}, None)
+            "transcription": trans, "trans_length": trans_length}, 0)
 
 
 def pack_inputs_in_dict_cont(audio, length, latent, trans, trans_length):
     """For estimator interface (only allows one input -> pack into dict)."""
     return ({"audio": audio, "audio_length": length, "latent": latent,
-             "transcription": trans, "trans_length": trans_length}, None)
+             "transcription": trans, "trans_length": trans_length}, 0)
