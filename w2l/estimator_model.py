@@ -229,8 +229,12 @@ def w2l_model_fn(features, labels, mode, params, config):
             if not phase:
                 predictions["audio_with_phase"] = audio_with_phase
 
+            tf.gradients(ctc_loss, audio)[0]
+
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
+    # loss comes before predictions because we need it for adversarial examples
+    # TODO refactor into separate function(s)
     with tf.name_scope("loss"):
         total_loss = 0
         if use_ctc:
@@ -323,17 +327,54 @@ def w2l_model_fn(features, labels, mode, params, config):
 
             if reg_coeff or verbose_losses:
                 print("Building latent variance loss...")
-                # we assume channels_first in the regularizer and don't need
-                # latent afterwards so we transpose "in place"
+                # we assume channels_first in the regularizer
                 if not cf:
-                    latent = tf.transpose(latent, [0, 2, 1])
+                    latent_cf = tf.transpose(latent, [0, 2, 1])
+                else:
+                    latent_cf = latent
                 latent_var_loss = feature_map_local_variance_regularizer(
-                    latent, "cos", mask_latent)
+                    latent_cf, "cos", mask_latent)
                 tf.summary.scalar("latent_var_loss", latent_var_loss)
                 ae_loss += reg_coeff * latent_var_loss
 
             total_loss += ae_coeff * ae_loss
             # TODO: maybe use non-random values for regularizer and logits
+
+    if mode == tf.estimator.ModeKeys.PREDICT:
+        with tf.name_scope("predictions"):
+            # predictions have to map strings to tensors, so I can't just
+            # add the encoder/decoder layer lists -- these are repackaged in
+            # estimator_main.py
+            predictions = {"logits": logits,
+                           "probabilities": tf.nn.softmax(
+                               logits,
+                               dim=1 if cf else -1,
+                               name="softmax_probabilities"),
+                           "latent": latent,
+                           "input": audio,
+                           "input_length": seq_lengths_original,
+                           "reconstruction": reconstructed}
+            if random:
+                predictions["latent_means"] = latent_means
+                predictions["latent_logvar"] = latent_logvar
+                if full_vae:
+                    predictions["logits_means"] = logits_means
+                    predictions["logits_logvar"] = logits_logvar
+
+            for name, act in encoder_layers + decoder_layers:
+                predictions[name] = act
+            if use_ctc:
+                decoded = decode(logits_tm, seq_lengths, top_paths=100,
+                                 pad_val=-1)
+                predictions["decoding"] = decoded
+            if not phase:
+                predictions["audio_with_phase"] = audio_with_phase
+
+            if use_ctc:
+                predictions["grad_for_inputs"] = tf.gradients(ctc_loss,
+                                                              audio)[0]
+
+        return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
     if mode == tf.estimator.ModeKeys.TRAIN:
         with tf.variable_scope("optimizer"):
