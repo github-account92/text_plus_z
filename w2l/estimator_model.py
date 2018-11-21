@@ -8,7 +8,8 @@ from .utils.layers import (conv_layer, transposed_conv_layer,
 from .utils.model import (decode, decode_top, dense_to_sparse, lr_annealer,
                           clip_and_step, compute_mmd,
                           # feature_map_global_variance_regularizer,
-                          feature_map_local_variance_regularizer)
+                          feature_map_local_variance_regularizer,
+                          blank_prob_loss, reconstruction_loss, mmd_loss)
 
 
 def w2l_model_fn(features, labels, mode, params, config):
@@ -89,7 +90,7 @@ def w2l_model_fn(features, labels, mode, params, config):
     reg_coeff = params["reg"]
     momentum = params["momentum"]
     fix_lr = params["fix_lr"]
-    mmd = params["mmd"]
+    mmd_coeff = params["mmd"]
     bottleneck = params["bottleneck"]
     use_ctc = params["use_ctc"]
     ae_coeff = params["ae_coeff"]
@@ -106,7 +107,10 @@ def w2l_model_fn(features, labels, mode, params, config):
 
     # construct model input -> output
     audio, seq_lengths = features["audio"], features["audio_length"]
-    n_channels = audio.shape.as_list()[1]
+    if cf:
+        n_channels = audio.shape.as_list()[1]
+    else:
+        n_channels = audio.shape.as_list()[-1]
     if not phase and phase_freqs_in_data:
         n_channels -= phase_freqs_in_data
         audio_with_phase = audio
@@ -203,7 +207,6 @@ def w2l_model_fn(features, labels, mode, params, config):
 
     # losses come before predict because we need the CTC loss to "predict"
     # adversarial gradients
-    # TODO refactor into separate function(s)
     with tf.name_scope("loss"):
         total_loss = 0
         if use_ctc:
@@ -215,75 +218,25 @@ def w2l_model_fn(features, labels, mode, params, config):
                 ctc_loss = tf.reduce_mean(tf.nn.ctc_loss(
                     labels=labels_sparse, inputs=logits_tm,
                     sequence_length=seq_lengths, time_major=True),
-                                          name="avg_loss")
+                    name="avg_loss")
             tf.summary.scalar("ctc_loss", ctc_loss)
             total_loss += ctc_loss
 
             if blank_coeff or verbose_losses:
-                blank_prob = tf.nn.softmax(logits_tm)
-                blank_act = tf.reduce_mean(blank_prob[:, :, -1])
-                total_loss += blank_coeff * blank_act
-                tf.summary.scalar("blank_activation", blank_act)
+                blank_avg = blank_prob_loss(logits_tm)
+                total_loss += blank_coeff * blank_avg
         if ae_coeff:
             print("Building reconstruction loss...")
-            with tf.name_scope("reconstruction_loss"):
-                mask_inp = tf.sequence_mask(seq_lengths_original,
-                                            dtype=tf.float32)
-                if cf:
-                    mask_inp = mask_inp[:, tf.newaxis, :]
-                else:
-                    mask_inp = mask_inp[:, :, tf.newaxis]
-                # since we don't count errors on padding elements we need to be
-                # careful counting the total number of elements for averaging
-                if phase:
-                    mag_audio = audio[:, :128, :]
-                    mag_rec = reconstructed[:, :128, :]
-                    phase_audio = audio[:, 128:, :]
-                    phase_rec = (tf.constant(np.pi, dtype=tf.float32) *
-                                 tf.nn.tanh(reconstructed[:, 128:, :]))
-                    reconstr_loss_mag = tf.reduce_sum(
-                        tf.squared_difference(mag_audio, mag_rec) * mask_inp)
-                    phase_diff = phase_audio - phase_rec
-                    # reconstr_loss_phase = tf.reduce_sum(
-                    #     tf.minimum(phase_diff, 2*np.pi-phase_diff)*mask_inp)
-                    reconstr_loss_phase = tf.reduce_sum(
-                        tf.sin(tf.abs(phase_diff/2))*mask_inp)
-                    reconstr_loss = (
-                        (reconstr_loss_mag + reconstr_loss_phase) /
-                        (n_channels * tf.count_nonzero(mask_inp,
-                                                       dtype=tf.float32)))
-                else:
-                    reconstr_loss = (tf.reduce_sum(
-                        tf.squared_difference(audio,
-                                              reconstructed) * mask_inp) /
-                                     (n_channels * tf.count_nonzero(
-                                         mask_inp, dtype=tf.float32)))
-            tf.summary.scalar("reconstruction_loss", reconstr_loss)
+            reconstr_loss = reconstruction_loss(
+                audio, reconstructed, seq_lengths_original, phase, n_channels,
+                phase_freqs_in_data, cf)
             ae_loss = reconstr_loss
 
-            if mmd or verbose_losses:
+            if mmd_coeff or verbose_losses:
                 print("Building MMD loss...")
-                with tf.name_scope("mmd"):
-                    if full_vae:
-                        latent_cl = tf.concat([logits, latent],
-                                              axis=1 if cf else -1)
-                    else:
-                        latent_cl = latent
-                    if cf:
-                        latent_cl = tf.transpose(latent_cl, [0, 2, 1])
-                    # we only take each 20th entry in the time axis as sample
-                    # this is to reduce RAM usage but should also reduce
-                    # dependencies between the samples (since technically they
-                    # are assumed to be independent, I believe...)
-                    latent_flat = tf.reshape(
-                        latent_cl, [-1, latent_cl.shape.as_list()[-1]])[::20]
-                    mask_latent = tf.sequence_mask(seq_lengths)
-                    mask_flat = tf.reshape(mask_latent, [-1])[::20]
-                    latent_masked = tf.boolean_mask(latent_flat, mask_flat)
-                    target_samples = tf.random_normal(tf.shape(latent_masked))
-                    mmd_loss = compute_mmd(target_samples, latent_masked)
-                    ae_loss += mmd * mmd_loss
-                tf.summary.scalar("mmd_loss", mmd_loss)
+                mask_latent = tf.sequence_mask(seq_lengths)
+                mmd = mmd_loss(latent, logits, mask_latent, full_vae, cf)
+                ae_loss += mmd_coeff * mmd
 
             if random:
                 print("Building variance loss for random encoder...")
@@ -410,9 +363,9 @@ def w2l_model_fn(features, labels, mode, params, config):
         if ae_coeff:
             eval_metric_ops["reconstruction_loss"] = tf.metrics.mean(
                 reconstr_loss, name="reconstruction_eval")
-            if mmd or verbose_losses:
+            if mmd_coeff or verbose_losses:
                 eval_metric_ops["mmd_loss"] = tf.metrics.mean(
-                    mmd_loss, name="mmd_eval")
+                    mmd, name="mmd_eval")
             if reg_coeff or verbose_losses:
                 eval_metric_ops["latent_var_loss"] = tf.metrics.mean(
                     latent_var_loss, name="latent_var_eval")
@@ -430,7 +383,7 @@ def w2l_model_fn(features, labels, mode, params, config):
                 ctc_loss, name="ctc_eval")
             if blank_coeff or verbose_losses:
                 eval_metric_ops["blank_activity"] = tf.metrics.mean(
-                    blank_act, name="blank_activity")
+                    blank_avg, name="blank_activity")
     return tf.estimator.EstimatorSpec(mode=mode, loss=total_loss,
                                       eval_metric_ops=eval_metric_ops)
 

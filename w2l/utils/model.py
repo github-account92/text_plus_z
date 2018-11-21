@@ -4,6 +4,109 @@ import tensorflow as tf
 
 
 ###############################################################################
+# Losses
+###############################################################################
+def blank_prob_loss(logits_cl):
+    """Compute regularization loss for average blank label activity.
+
+    Parameters:
+        logits_cl: Character logits. Note that these are assumed to be
+                   channels_last!!
+    """
+    with tf.variable_scope("blank_prob_regularizer"):
+        probs = tf.nn.softmax(logits_cl)
+        blank_avg = tf.reduce_mean(probs[:, :, -1])
+    tf.summary.scalar("blank_activation", blank_avg)
+    return blank_avg
+
+
+def reconstruction_loss(audio, reconstructed, seq_lengths, phase, n_channels,
+                        phase_channels, channels_first):
+    """Compute reconstruction loss for an autoencoder.
+
+    Parameters:
+        audio: The original audio.
+        reconstructed: Reconstructed audio.
+        seq_lengths: Actual audio sequence lengths without padding.
+        phase: Bool: whether the data includes phase (uses different loss).
+        n_channels: Number of channels in the data. Easy to compute in here,
+                    but we compute it outside anyway so might as well pass it.
+        phase_channels: How many phase channels there are in the data.
+        channels_first: Bool, whether data is channels_first. If not, is
+                        assumed to be channels_last.
+    """
+    with tf.name_scope("reconstruction_loss"):
+        mask_inp = tf.sequence_mask(seq_lengths, dtype=tf.float32)
+        if channels_first:
+            mask_inp = mask_inp[:, tf.newaxis, :]
+        else:
+            mask_inp = mask_inp[:, :, tf.newaxis]
+        # since we don't count errors on padding elements we need to be
+        # careful counting the total number of elements for averaging
+        if phase:
+            mag_channels = n_channels - phase_channels
+            mag_audio = audio[:, :mag_channels, :]
+            mag_rec = reconstructed[:, :mag_channels, :]
+            phase_audio = audio[:, mag_channels:, :]
+            phase_rec = (tf.constant(np.pi, dtype=tf.float32) *
+                         tf.nn.tanh(reconstructed[:, mag_channels:, :]))
+            reconstr_loss_mag = tf.reduce_sum(
+                tf.squared_difference(mag_audio, mag_rec) * mask_inp)
+            phase_diff = phase_audio - phase_rec
+            # reconstr_loss_phase = tf.reduce_sum(
+            #     tf.minimum(phase_diff, 2*np.pi-phase_diff)*mask_inp)
+            reconstr_loss_phase = tf.reduce_sum(
+                tf.sin(tf.abs(phase_diff / 2)) * mask_inp)
+            reconstr_loss = (
+                    (reconstr_loss_mag + reconstr_loss_phase) /
+                    (n_channels * tf.count_nonzero(mask_inp,
+                                                   dtype=tf.float32)))
+        else:
+            reconstr_loss = (tf.reduce_sum(
+                tf.squared_difference(audio,
+                                      reconstructed) * mask_inp) /
+                             (n_channels * tf.count_nonzero(
+                                 mask_inp, dtype=tf.float32)))
+    tf.summary.scalar("reconstruction_loss", reconstr_loss)
+    return reconstr_loss
+
+
+def mmd_loss(latent, logits, latent_mask, full_vae, cf):
+    """Compute MMD loss for latent space.
+
+    Parameters:
+        latent: Latent space tensor.
+        logits: Logit space tensor. If full_vae is not set you may pass a dummy
+                here.
+        latent_mask: Mask giving which latent elements are "real" i.e. no
+                     padding.
+        full_vae: Bool; if true, also compute MMD on the logits.
+        cf: Bool, if true data format is assumed to be channels_first (else
+            channels_last).
+    """
+    with tf.name_scope("mmd"):
+        if full_vae:
+            latent_cl = tf.concat([logits, latent],
+                                  axis=1 if cf else -1)
+        else:
+            latent_cl = latent
+        if cf:
+            latent_cl = tf.transpose(latent_cl, [0, 2, 1])
+        # we only take each 20th entry in the time axis as sample
+        # this is to reduce RAM usage but should also reduce
+        # dependencies between the samples (since technically they
+        # are assumed to be independent, I believe...)
+        latent_flat = tf.reshape(
+            latent_cl, [-1, latent_cl.shape.as_list()[-1]])[::20]
+        mask_flat = tf.reshape(latent_mask, [-1])[::20]
+        latent_masked = tf.boolean_mask(latent_flat, mask_flat)
+        target_samples = tf.random_normal(tf.shape(latent_masked))
+        mmd = compute_mmd(target_samples, latent_masked)
+    tf.summary.scalar("mmd_loss", mmd)
+    return mmd
+
+
+###############################################################################
 # Regularizer
 ###############################################################################
 def feature_map_global_variance_regularizer(feature_map, mask):
@@ -331,6 +434,7 @@ def leaky_random(vec_size, n_samples, std=1, diffusion=0.9):
 
     Note that this tends to converge to 0, especially for large diffusion
     values.
+    This uses numpy, not TF!!!
 
     Parameters:
         vec_size: Size of each sample.
