@@ -58,10 +58,10 @@ def run_asr(mode,
         eval-all: Returns a dict mapping checkpoint names to evaluation dicts.
         predict: Returns a generator over predictions for the requested set.
         return: Return the estimator object. Use this if you want access to
-                   the variables or their values, for example.
+                the variables or their values, for example.
         container: Returns a generator over predictions for the given
-                      container.
-
+                   container.
+        input_fn: Returns the input function for your pleasure (no estimator).
     """
     # Set up, verify arguments etc.
     tf.logging.set_verbosity(tf.logging.INFO)
@@ -149,6 +149,9 @@ def run_asr(mode,
                 csv_path, array_dir, which_sets, train=mode == "train",
                 vocab=ch_to_ind, n_freqs=n_freqs, batch_size=batch_size,
                 threshold=threshold)
+
+    if mode == "input_fn":
+        return input_fn
 
     if mode == "train":
         estimator.train(input_fn=input_fn, steps=steps)
