@@ -72,6 +72,8 @@ def w2l_model_fn(features, labels, mode, params, config):
                             trained on.
             blank_coeff: Coefficient for blank label activity regularizer;
                          0 disables it.
+            adversarial: Bool, use adversarial traning or return adversarial
+                         gradients in predictions.
         config: RunConfig object passed through from Estimator.
 
     Returns:
@@ -102,6 +104,7 @@ def w2l_model_fn(features, labels, mode, params, config):
     full_vae = params["full_vae"]
     verbose_losses = params["verbose_losses"]
     blank_coeff = params["blank_coeff"]
+    adversarial = params["adversarial"]
 
     cf = data_format == "channels_first"
 
@@ -225,6 +228,41 @@ def w2l_model_fn(features, labels, mode, params, config):
             if blank_coeff or verbose_losses:
                 blank_avg = blank_prob_loss(logits_tm)
                 total_loss += blank_coeff * blank_avg
+
+            # TODO doesn't mix with other losses/regularizers etc!
+            # use with pure CTC!
+            if adversarial:
+                adversarial_gradients = tf.gradients(ctc_loss, audio)[0]
+                adv_audio = audio + 2*tf.sign(adversarial_gradients)
+                adv_audio = tf.clip_by_value(adv_audio, 0, np.inf)
+
+                with tf.variable_scope("model", reuse=True):
+                    adv_pre_out, adv_total_stride, adv_encoder_layers = \
+                        read_apply_model_config(
+                            model_config + "_enc", adv_audio, act=act,
+                            batchnorm=use_bn,
+                            train=mode == tf.estimator.ModeKeys.TRAIN,
+                            data_format=data_format, vis=vis, prefix="encoder")
+
+                    # output size is vocab size + 1 for the blank symbol in CTC
+                    # note: train has no effect if batchnorm is disabled
+                    adv_logits, _ = conv_layer(
+                        adv_pre_out, vocab_size + 1, 1, 1, 1,
+                        act=None, batchnorm=False, train=False,
+                        data_format=data_format,
+                        vis=vis, name="logits")
+                    adv_logits_tm = tf.transpose(
+                        adv_logits, perm=[2, 0, 1] if cf else [1, 0, 2],
+                        name="logits_time_major")
+
+                adv_ctc_loss = tf.reduce_mean(tf.nn.ctc_loss(
+                    labels=labels_sparse, inputs=adv_logits_tm,
+                    sequence_length=seq_lengths, time_major=True),
+                    name="avg_loss")
+                tf.summary.scalar("adv_ctc_loss", adv_ctc_loss)
+                total_loss += adv_ctc_loss
+                total_loss /= 2
+
         if ae_coeff:
             print("Building reconstruction loss...")
             reconstr_loss = reconstruction_loss(
@@ -289,8 +327,9 @@ def w2l_model_fn(features, labels, mode, params, config):
                 decoded = decode(logits_tm, seq_lengths, top_paths=100,
                                  pad_val=-1)
                 predictions["decoding"] = decoded
-                predictions["adversarial_gradient"] = tf.gradients(ctc_loss,
-                                                                   audio)[0]
+                if adversarial:
+                    predictions["adversarial_gradient"] = tf.gradients(
+                        ctc_loss, audio)[0]
             if not phase:
                 predictions["audio_with_phase"] = audio_with_phase
 

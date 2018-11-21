@@ -106,6 +106,11 @@ parser.add_argument("-B", "--batch_size",
                     type=int,
                     default=16,  # small but seems to work well
                     help="Batch size. Default: 16.")
+parser.add_argument("-D", "--adversarial",
+                    action="store_true",
+                    help="Set to activate adversarial training and return "
+                         "adversarial gradients in predictions. This will of "
+                         "course only work if a proper transcription is given.")
 parser.add_argument("-C", "--clipping",
                     type=float,
                     default=500.0,
@@ -201,6 +206,7 @@ out = run_asr(mode=args.mode,
               topk=args.topk,
               use_ctc=not args.ctc_off,
               adam_params=args.adam_params,
+              adversarial=args.adversarial,
               batch_size=args.batch_size,
               clipping=args.clipping,
               fix_lr=args.fix_lr,

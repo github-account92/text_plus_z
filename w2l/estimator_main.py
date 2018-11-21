@@ -29,6 +29,7 @@ def run_asr(mode,
             topk=0,
             use_ctc=True,
             adam_params=(1e-4, 0.9, 0.9, 1e-8),
+            adversarial=False,
             batch_size=16,
             clipping=500,
             fix_lr=False,
@@ -111,7 +112,8 @@ def run_asr(mode,
               "random": random,
               "full_vae": full_vae,
               "verbose_losses": verbose_losses,
-              "blank_coeff": blank_coeff}
+              "blank_coeff": blank_coeff,
+              "adversarial": adversarial}
     # we set infrequent "permanent" checkpoints
     # we also disable the default SummarySaverHook IF profiling is requested
     config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=6,
