@@ -209,7 +209,7 @@ def w2l_input_fn_from_container(array_container, n_freqs, vocab_size,
         data = data.padded_batch(
             1,
             padded_shapes=((n_freqs, -1), (), (vocab_size+bottleneck, -1),
-                           (1,), ()),
+                           (-1,), ()),
             padding_values=(np.log(1e-10).astype(np.float32), 0, 0.,
                             -1, 0))
         data = data.map(pack_inputs_in_dict_cont, num_parallel_calls=3)
