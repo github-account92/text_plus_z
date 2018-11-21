@@ -39,7 +39,8 @@ def run_asr(mode,
             vis=100,
             which_sets=None,
             container=None,
-            only_decode=False):
+            only_decode=False,
+            is_mel=False):
     """
     Execute generic ASR function.
 
@@ -48,6 +49,7 @@ def run_asr(mode,
     Exception #1 is 'container' which is used only in "container mode".
     Exception #2 is only_decode, which should only ever be used in container
     mode because the other modes don't provide an appropriate input function.
+    Exception #3 is is_mel, which is also for container mode only.
 
     Returns:
         Depends on mode!
@@ -140,7 +142,7 @@ def run_asr(mode,
 
         def input_fn():
             return w2l_input_fn_from_container(
-                container, n_freqs, len(ch_to_ind) + 1, bottleneck)
+                container, n_freqs, len(ch_to_ind) + 1, bottleneck, is_mel)
     else:
         def input_fn():
             return w2l_input_fn_npy(

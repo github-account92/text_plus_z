@@ -161,25 +161,32 @@ def _pyfunc_load_arrays_map_transcriptions(file_name, trans, vocab, threshold):
 # To go straight from some collection of numpy arrays
 ###############################################################################
 def w2l_input_fn_from_container(array_container, n_freqs, vocab_size,
-                                bottleneck):
+                                bottleneck, is_mel=False):
     """Build input function from a container with 1D numpy arrays.
-
-    Note that this will yield dummy transcriptions containing a single 0.
-    These should never be used.
 
     Parameters:
         array_container: Should be something like a list of numpy arrays.
-                         The first element of this container will continuously
-                         be yielded. You need to modify this container from
+                         The elements of this container will continuously be
+                         yielded. You need to modify this container from
                          outside to process more sequences. Only really
                          suitable for for estimator.predict.
-                         IF only_decode is used in the main code, the _second_
-                         element will be taken as a latent sample! However,
-                         there always needs to be a second element to keep this
-                         code simple. Any further elements are ignored.
+                         The container needs to have at least three elements:
+                         0: Input audio sequence (raw audio, is converted to mel
+                            internally OR interpreted as already being mel if
+                            is_mel is True).
+                         1: Corresponding transcription (coded as indices!).
+                            You may pass a dummy here if it's not available/not
+                            interesting.
+                         2: Latent sample. Only used if "only_decode" mode is
+                            used. Again, pass dummy otherwise.
+
+                         Any further elements are ignored.
         n_freqs: Frequencies to be expected in data.
         vocab_size: Duh.
         bottleneck: Size of the non-logit latent space.
+        is_mel: If True, audio input (container[0]) is assumed to already be a
+                pre-processed mel spectrogram. Otherwise the transformation is
+                done in here.
 
     Returns:
         get_next op of iterator.
@@ -187,11 +194,14 @@ def w2l_input_fn_from_container(array_container, n_freqs, vocab_size,
     """
     def gen():
         while True:
-            as_mel = raw_to_mel(
-                array_container[0], 16000, 400, 160, 128,
-                keep_phase=True).astype(np.float32)
-            yield (as_mel, np.int32(as_mel.shape[-1]), array_container[1],
-                   np.array([0], dtype=np.int32), np.int32(1))
+            if is_mel:
+                as_mel = array_container[0]
+            else:
+                as_mel = raw_to_mel(
+                    array_container[0], 16000, 400, 160, 128,
+                    keep_phase=True).astype(np.float32)
+            yield (as_mel, np.int32(as_mel.shape[-1]), array_container[2],
+                   array_container[1], np.int32(array_container[1].shape[-1]))
 
     with tf.variable_scope("input"):
         data = tf.data.Dataset.from_generator(
