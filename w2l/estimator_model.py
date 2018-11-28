@@ -6,7 +6,7 @@ from .utils.hooks import SummarySaverHookWithProfile
 from .utils.layers import (conv_layer, transposed_conv_layer,
                            cnn1d_from_config, rnn_from_config)
 from .utils.model import (decode, decode_top, dense_to_sparse, lr_annealer,
-                          clip_and_step, compute_mmd,
+                          clip_and_step,
                           # feature_map_global_variance_regularizer,
                           feature_map_local_variance_regularizer,
                           blank_prob_loss, reconstruction_loss, mmd_loss)
@@ -131,16 +131,19 @@ def w2l_model_fn(features, labels, mode, params, config):
         # output size is vocab size + 1 for the blank symbol in CTC
         # note: train has no effect if batchnorm is disabled
         logits_means, _ = conv_layer(
-            pre_out, vocab_size + 1, 1, 1, 1,
+            inputs=pre_out, n_filters=vocab_size + 1, width_filters=1,
+            stride_filters=1, dilation=1,
             act=None, batchnorm=False, train=False, data_format=data_format,
             vis=vis, name="logits")
         latent_means, _ = conv_layer(
-            pre_out, bottleneck, 1, 1, 1,
+            inputs=pre_out, n_filters=bottleneck, width_filters=1,
+            stride_filters=1, dilation=1,
             act=None, batchnorm=False, train=False, data_format=data_format,
             vis=vis, name="latent")
         if random:
             latent_logvar, _ = conv_layer(
-                pre_out, bottleneck, 1, 1, 1,
+                inputs=pre_out, n_filters=bottleneck, width_filters=1,
+                stride_filters=1, dilation=1,
                 act=None, batchnorm=False, train=False,
                 data_format=data_format, vis=vis, name="latent_logvar")
             latent_samples = tf.random_normal(tf.shape(latent_means))
@@ -148,7 +151,8 @@ def w2l_model_fn(features, labels, mode, params, config):
                                      tf.sqrt(tf.exp(latent_logvar)))
             if full_vae:
                 logits_logvar, _ = conv_layer(
-                    pre_out, vocab_size + 1, 1, 1, 1,
+                    inputs=pre_out, n_filters=vocab_size + 1, width_filters=1,
+                    stride_filters=1, dilation=1,
                     act=None, batchnorm=False, train=False,
                     data_format=data_format, vis=vis, name="logits_logvar")
                 logits_samples = tf.random_normal(tf.shape(logits_means))
@@ -234,7 +238,8 @@ def w2l_model_fn(features, labels, mode, params, config):
             if adversarial:
                 adversarial_gradients = tf.gradients(ctc_loss, audio)[0]
                 adv_audio = audio + 2*tf.sign(adversarial_gradients)
-                adv_audio = tf.clip_by_value(adv_audio, 0, np.inf)
+                adv_audio = tf.clip_by_value(adv_audio, np.log(1e-10), np.inf)
+                adv_audio = tf.stop_gradient(adv_audio)
 
                 with tf.variable_scope("model", reuse=True):
                     adv_pre_out, adv_total_stride, adv_encoder_layers = \
@@ -375,7 +380,7 @@ def w2l_model_fn(features, labels, mode, params, config):
                     optimizer, total_loss, clipping)
         # visualize gradients
         if vis:
-            with tf.name_scope("visualization"):
+            with tf.name_scope("gradient_norm"):
                 for g, v in grads_and_vars:
                     if v.name.find("kernel") >= 0 and g is not None:
                         tf.summary.scalar(v.name + "gradient_norm", tf.norm(g))
