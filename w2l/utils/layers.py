@@ -47,18 +47,23 @@ def cnn1d_from_config(parsed_config, inputs, act, batchnorm, train,
             if _type == "layer":
                 if transpose:
                     previous, pars = transposed_conv_layer(
-                        previous, n_f, w_f, s_f, d_f, act, batchnorm, train,
-                        data_format, vis, name=name)
+                        inputs=previous, n_filters=n_f, width_filters=w_f,
+                        stride_filters=s_f, dilation=d_f, act=act,
+                        batchnorm=batchnorm, train=train,
+                        data_format=data_format, vis=vis, name=name)
                 else:
                     previous, pars = conv_layer(
-                        previous, n_f, w_f, s_f, d_f, act, batchnorm, train,
-                        data_format, vis, name=name)
+                        inputs=previous, n_filters=n_f, width_filters=w_f,
+                        stride_filters=s_f, dilation=d_f, act=act,
+                        batchnorm=batchnorm, train=train,
+                        data_format=data_format, vis=vis, name=name)
             # TODO: residual/dense blocks ignore some parameters ATM!
 
             elif _type == "block":
                 previous, pars = residual_block(
-                    previous, n_f, w_f, s_f, act, batchnorm, train,
-                    data_format, vis, name=name)
+                    inputs=previous, n_filters=n_f, width_filters=w_f,
+                    stride_filters=s_f, act=act, batchnorm=batchnorm,
+                    train=train, data_format=data_format, vis=vis, name=name)
             #elif _type == "dense":
             #    previous, pars = dense_block(
             #        previous, n_f, w_f, s_f, act, batchnorm, train,
@@ -77,7 +82,7 @@ def cnn1d_from_config(parsed_config, inputs, act, batchnorm, train,
 
 
 def conv_layer(inputs, n_filters, width_filters, stride_filters, dilation, act,
-               batchnorm, train, data_format, vis, name):
+               batchnorm, train, data_format, vis, name, separable=False):
     """Build and apply a 1D convolutional layer without pooling.
 
     Parameters:
@@ -96,15 +101,20 @@ def conv_layer(inputs, n_filters, width_filters, stride_filters, dilation, act,
                      assumes that it's last.
         vis: Bool, whether to add a histogram for layer activations.
         name: Name of the layer (used for variable scope and summary).
+        separable: If true, use depthwise-separable convolution.
 
     Returns:
         Output of the layer and number of parameters.
 
     """
     channel_axis = 1 if data_format == "channels_first" else -1
+    if separable:
+        layer = tf.layers.SeparableConv1D
+    else:
+        layer = tf.layers.Conv1D
 
     with tf.variable_scope(name):
-        conv = tf.layers.Conv1D(
+        conv = layer(
             filters=n_filters, kernel_size=width_filters,
             strides=stride_filters, dilation_rate=dilation,
             activation=None if batchnorm else act,
@@ -312,13 +322,12 @@ def residual_block_bottleneck(inputs, n_filters, width_filters, stride_filters,
             print("\t\tCreating input projection...")
             inputs, pars_proj = conv_layer(
                 inputs, in_channels // bottleneck_factor * blowup_factor, 1, 1,
-                1, None, batchnorm, train, data_format,vis, name="projection")
+                1, None, batchnorm, train, data_format, vis, name="projection")
         else:
             pars_proj = 0
 
         out = act(inputs + conv3) if act else inputs + conv3
         return out, pars1 + pars2 + pars3 + pars_proj
-
 
 
 ###############################################################################
