@@ -5,10 +5,9 @@ from w2l.estimator_main import run_asr
 
 parser = argparse.ArgumentParser(description="See README.md")
 parser.add_argument("mode",
-                    choices=["train", "predict", "eval-current", "eval-all",
-                             "return"],
+                    choices=["train", "predict", "eval-current", "eval-all"],
                     help="What to do. 'train', 'predict', 'eval-current', "
-                         "'eval-all' or 'return'.")
+                         "'eval-all'.")
 parser.add_argument("data_config",
                     help="Path to data config file. See code for details.")
 parser.add_argument("model_config",
@@ -106,16 +105,16 @@ parser.add_argument("-B", "--batch_size",
                     type=int,
                     default=16,  # small but seems to work well
                     help="Batch size. Default: 16.")
-parser.add_argument("-D", "--adversarial",
-                    action="store_true",
-                    help="Set to activate adversarial training and return "
-                         "adversarial gradients in predictions. This will of "
-                         "course only work if a proper transcription is given.")
 parser.add_argument("-C", "--clipping",
                     type=float,
                     default=500.0,
                     help="Global norm to clip gradients to. Default: 500. If "
                          "no clipping is desired, pass 0 here.")
+parser.add_argument("-D", "--adversarial",
+                    action="store_true",
+                    help="Set to activate adversarial training and return "
+                         "adversarial gradients in predictions. This will of "
+                         "course only work if a proper transcription is given.")
 parser.add_argument("-F", "--fix_lr",
                     action="store_true",
                     help="Set this flag to use the LR given in adam_params "
