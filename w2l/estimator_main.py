@@ -130,10 +130,11 @@ def run_asr(mode,
     if not which_sets:
         if mode == "train":
             which_sets = ["train-clean-100", "train-clean-360",
-                          "train-other-500", "dev-clean", "dev-other",
+                          "train-other-500",
                           "training"]
-        else:  # predict or eval -- use the test set
-            which_sets = ["test-clean", "test-other", "test"]
+        else:  # predict or eval -- use the dev set
+            # note for German data there is no dev set so we use the test set...
+            which_sets = ["dev-clean", "dev-other", "test"]
 
     if mode == "container":
         if not container:
@@ -195,7 +196,9 @@ def run_asr(mode,
                 predictions_repacked["decoder_layers"] = decoder_layers
 
                 other_keys = ["logits", "latent", "input", "reconstruction",
-                              "input_length", "adversarial_gradient"]
+                              "input_length"]
+                if adversarial:
+                    other_keys.append("adversarial_gradient")
                 if random:
                     other_keys += ["latent_means", "latent_logvar"]
                     if full_vae:

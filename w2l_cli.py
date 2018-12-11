@@ -5,9 +5,9 @@ from w2l.estimator_main import run_asr
 
 parser = argparse.ArgumentParser(description="See README.md")
 parser.add_argument("mode",
-                    choices=["train", "predict", "eval-current", "eval-all"],
-                    help="What to do. 'train', 'predict', 'eval-current', "
-                         "'eval-all'.")
+                    choices=["train", "eval-current", "eval-all", "errors"],
+                    help="What to do. 'train', 'eval-current', 'eval-all' or"
+                         "'errors'.")
 parser.add_argument("data_config",
                     help="Path to data config file. See code for details.")
 parser.add_argument("model_config",
