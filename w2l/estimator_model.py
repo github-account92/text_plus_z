@@ -74,6 +74,7 @@ def w2l_model_fn(features, labels, mode, params, config):
                          0 disables it.
             adversarial: Bool, use adversarial traning or return adversarial
                          gradients in predictions.
+            l2_reg: Float, coefficient for kernel L2 regularizer. 0 disables it.
         config: RunConfig object passed through from Estimator.
 
     Returns:
@@ -105,6 +106,7 @@ def w2l_model_fn(features, labels, mode, params, config):
     verbose_losses = params["verbose_losses"]
     blank_coeff = params["blank_coeff"]
     adversarial = params["adversarial"]
+    l2_reg = params["l2_reg"]
 
     cf = data_format == "channels_first"
 
@@ -237,8 +239,11 @@ def w2l_model_fn(features, labels, mode, params, config):
             # use with pure CTC!
             if adversarial:
                 adversarial_gradients = tf.gradients(ctc_loss, audio)[0]
-                adv_audio = audio + 2*tf.sign(adversarial_gradients)
-                adv_audio = tf.clip_by_value(adv_audio, np.log(1e-10), np.inf)
+                scaled_grads = adversarial_gradients / tf.reduce_max(
+                    tf.abs(adversarial_gradients), axis=[1, 2], keepdims=True)
+                adv_audio = audio + 20 * scaled_grads
+                adv_audio = tf.clip_by_value(adv_audio, np.log(1e-10),
+                                             tf.reduce_max(audio))
                 adv_audio = tf.stop_gradient(adv_audio)
 
                 with tf.variable_scope("model", reuse=True):
@@ -304,6 +309,11 @@ def w2l_model_fn(features, labels, mode, params, config):
 
             total_loss += ae_coeff * ae_loss
             # TODO: maybe use non-random values for regularizer and logits
+
+        if l2_reg or verbose_losses:
+            l2_loss = tf.losses.get_regularization_loss()
+            tf.summary.scalar("kernel_l2_loss", l2_loss)
+            total_loss += l2_reg * l2_loss
 
     if mode == tf.estimator.ModeKeys.PREDICT:
         with tf.name_scope("predictions"):

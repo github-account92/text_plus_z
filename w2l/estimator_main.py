@@ -33,6 +33,7 @@ def run_asr(mode,
             batch_size=16,
             clipping=500,
             fix_lr=False,
+            l2_reg=0.0,
             momentum=False,
             steps=500000,
             threshold=0.,
@@ -58,6 +59,7 @@ def run_asr(mode,
         eval-current: Returns the dict with evaluation results.
         eval-all: Returns a dict mapping checkpoint names to evaluation dicts.
         predict: Returns a generator over predictions for the requested set.
+        errors: Return LER/WER floats.
         return: Return the estimator object. Use this if you want access to
                 the variables or their values, for example.
         container: Returns a generator over predictions for the given
@@ -113,7 +115,8 @@ def run_asr(mode,
               "full_vae": full_vae,
               "verbose_losses": verbose_losses,
               "blank_coeff": blank_coeff,
-              "adversarial": adversarial}
+              "adversarial": adversarial,
+              "l2_reg": l2_reg}
     # we set infrequent "permanent" checkpoints
     # we also disable the default SummarySaverHook IF profiling is requested
     config = tf.estimator.RunConfig(keep_checkpoint_every_n_hours=6,

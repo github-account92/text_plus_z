@@ -131,6 +131,11 @@ parser.add_argument("-I", "--verbose_losses",
                          "not part of the cost function. This includes MMD "
                          "and local/global latent variance (both only if AE "
                          "is used at all).")
+parser.add_argument("-L", "--l2",
+                    type=float,
+                    default=0.0,
+                    help="Coefficient for l2 regularizer on weights. Default:"
+                         "0.0, disables regularization.")
 parser.add_argument("-M", "--momentum",
                     action="store_true",
                     help="Pass this to use plain Gradient Descent with "
@@ -209,6 +214,7 @@ out = run_asr(mode=args.mode,
               batch_size=args.batch_size,
               clipping=args.clipping,
               fix_lr=args.fix_lr,
+              l2_reg=args.l2,
               momentum=args.momentum,
               steps=args.steps,
               threshold=args.threshold,
