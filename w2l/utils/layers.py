@@ -118,6 +118,7 @@ def conv_layer(inputs, n_filters, width_filters, stride_filters, dilation, act,
             filters=n_filters, kernel_size=width_filters,
             strides=stride_filters, dilation_rate=dilation,
             activation=None if batchnorm else act,
+            kernel_regularizer=lambda x: tf.norm(x),
             use_bias=not batchnorm, padding="same", data_format=data_format,
             name="conv")
         conved = conv.apply(inputs)
